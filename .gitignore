@@ -1,0 +1,57 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+
+# Python test and coverage output
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs/temp
+*.log
+*.tmp
+*.bak
+
+# C/C++ build artifacts
+*.o
+*.obj
+*.d
+*.exe
+*.out
+*.dll
+*.so
+*.a
+*.lib
+*.pdb
+*.ilk
+build/bin/
+build/obj/
+
+# Generated output data
+data/output/
