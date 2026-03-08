@@ -1,6 +1,7 @@
 #pragma once
 
 #include "graph.h"
+#include <unordered_set>
 
 struct StarNode{
     int node_id;                           // 中心节点ID

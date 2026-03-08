@@ -7,6 +7,7 @@ SRC := \
 	./src/graph.cpp \
 	./src/read_to_flow.cpp \
 	./src/sorting.cpp \
+	./src/find_graph.cpp \
 	./src/find_path.cpp \
 	./src/check_scan.cpp \
 	./src/check_star.cpp \

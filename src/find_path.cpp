@@ -1,5 +1,8 @@
 #include "find_path.h"
 
+#include <algorithm>
+#include <queue>
+
 const double INF = std::numeric_limits<double>::max();
 
 PathResult BFS(const CSRGraph &graph, const char *src_ip, const char *dst_ip)

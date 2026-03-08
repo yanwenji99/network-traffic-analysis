@@ -2,6 +2,7 @@
 #include "read_to_flow.h"
 #include "sorting.h"
 #include "find_path.h"
+#include "find_graph.h"
 #include "check_star.h"
 #include "check_scan.h"
 #include "check_range.h"
@@ -338,7 +339,6 @@ namespace
 #define CHECK_SCAN 0
 #define CHECK_RANGE 0
 
-
 int main(int argc, char *argv[])
 {
     CliOptions options;
@@ -375,7 +375,7 @@ int main(int argc, char *argv[])
     std::string func;
     do
     {
-        std::cout << "Enter operation:(sort path read check exit) ";
+        std::cout << "Enter operation:(sort path subgraph subgraph_json read check exit) ";
         std::cin >> func;
         if (func == "sort")
         {
@@ -407,6 +407,36 @@ int main(int argc, char *argv[])
 #endif
             printf_path(result);
         }
+        else if (func == "subgraph")
+        {
+            std::cout << "Enter target IP: ";
+            std::string target_ip;
+            std::cin >> target_ip;
+            SubgraphResult result = find_subgraph_by_ip(graph, target_ip.c_str());
+            printf_subgraph_result(graph, result);
+        }
+        else if (func == "subgraph_json")
+        {
+            std::cout << "Enter target IP: ";
+            std::string target_ip;
+            std::cin >> target_ip;
+
+            const std::string output_json_path = "./data/output/subgraph.json";
+
+            SubgraphResult result = find_subgraph_by_ip(graph, target_ip.c_str());
+            printf_subgraph_result(graph, result);
+            if (result.found)
+            {
+                if (export_subgraph_json(graph, result, output_json_path))
+                {
+                    std::cout << "Subgraph JSON exported to: " << output_json_path << std::endl;
+                }
+                else
+                {
+                    std::cout << "Subgraph JSON export failed." << std::endl;
+                }
+            }
+        }
         else if (func == "read")
         {
             std::cout << "Please input the number of flows to display: ";
@@ -429,7 +459,7 @@ int main(int argc, char *argv[])
         }
         else if (func != "exit")
         {
-            std::cout << "Invalid operation. Please enter 'sort', 'path', 'read', 'check', or 'exit'" << std::endl;
+            std::cout << "Invalid operation. Please enter 'sort', 'path', 'subgraph', 'subgraph_json', 'read', 'check', or 'exit'" << std::endl;
         }
     } while (func != "exit");
 

@@ -37,39 +37,6 @@ PROTOCOL_NAMES = {
 }
 
 
-class DSU:
-    def __init__(self) -> None:
-        self.parent: dict[str, str] = {}
-        self.rank: dict[str, int] = {}
-
-    def add(self, node: str) -> None:
-        if node not in self.parent:
-            self.parent[node] = node
-            self.rank[node] = 0
-
-    def find(self, node: str) -> str:
-        parent = self.parent[node]
-        if parent != node:
-            self.parent[node] = self.find(parent)
-        return self.parent[node]
-
-    def union(self, node_a: str, node_b: str) -> None:
-        root_a = self.find(node_a)
-        root_b = self.find(node_b)
-        if root_a == root_b:
-            return
-
-        rank_a = self.rank[root_a]
-        rank_b = self.rank[root_b]
-        if rank_a < rank_b:
-            self.parent[root_a] = root_b
-        elif rank_a > rank_b:
-            self.parent[root_b] = root_a
-        else:
-            self.parent[root_b] = root_a
-            self.rank[root_a] += 1
-
-
 class TrafficAnalyzerGUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -114,8 +81,8 @@ class TrafficAnalyzerGUI(tk.Tk):
 
         self.star_leaf_map: dict[str, list[str]] = {}
         self.full_graph = None
-        self.dsu = DSU()
         self.current_subgraph_nodes: list[str] = []
+        self.current_subgraph_graph = None
 
         self._build_layout()
 
@@ -325,35 +292,30 @@ class TrafficAnalyzerGUI(tk.Tk):
         ttk.Label(controls, text="目标 IP", width=12).grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(controls, textvariable=self.subgraph_target_ip_var, width=28).grid(row=0, column=1, sticky=tk.W, padx=(6, 10))
 
-        self.btn_build_graph = ttk.Button(controls, text="基于 CSV 构图", command=self.build_graph_for_subgraph)
-        self.btn_build_graph.grid(row=0, column=2, padx=(0, 8), sticky=tk.W)
-
         self.btn_query_subgraph = ttk.Button(controls, text="查询该 IP 子图", command=self.query_subgraph_by_ip)
-        self.btn_query_subgraph.grid(row=0, column=3, padx=(0, 8), sticky=tk.W)
+        self.btn_query_subgraph.grid(row=0, column=2, padx=(0, 8), sticky=tk.W)
 
         self.btn_export_subgraph = ttk.Button(controls, text="导出子图 HTML", command=self.export_subgraph_html)
-        self.btn_export_subgraph.grid(row=0, column=4, sticky=tk.W)
+        self.btn_export_subgraph.grid(row=0, column=3, sticky=tk.W)
 
         ttk.Checkbutton(
             controls,
             text="强制节点最小间距",
             variable=self.enforce_node_spacing_var,
-        ).grid(row=0, column=5, sticky=tk.W, padx=(10, 0))
+        ).grid(row=0, column=4, sticky=tk.W, padx=(10, 0))
 
         if nx is None:
             warn = ttk.Label(
                 controls,
-                text="未安装 networkx，请执行: python -m pip install -r requirements.txt",
+                text="未安装 networkx：后端子图查询可用，但 HTML 导出不可用。",
             )
-            warn.grid(row=1, column=0, columnspan=6, sticky=tk.W, pady=(8, 0))
-            self.btn_build_graph.configure(state=tk.DISABLED)
-            self.btn_query_subgraph.configure(state=tk.DISABLED)
+            warn.grid(row=1, column=0, columnspan=5, sticky=tk.W, pady=(8, 0))
             self.btn_export_subgraph.configure(state=tk.DISABLED)
 
-        info_box = ttk.LabelFrame(self.page_subgraph, text="连通子图信息（DSU）", padding=10)
+        info_box = ttk.LabelFrame(self.page_subgraph, text="后端子图信息（有向）", padding=10)
         info_box.pack(fill=tk.X, pady=(10, 0))
 
-        ttk.Label(info_box, text="连通分量根:", width=16).grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(info_box, text="子图范围:", width=16).grid(row=0, column=0, sticky=tk.W)
         ttk.Label(info_box, textvariable=self.subgraph_info_vars["component_root"]).grid(row=0, column=1, sticky=tk.W)
         ttk.Label(info_box, text="节点数:", width=10).grid(row=0, column=2, sticky=tk.W, padx=(20, 0))
         ttk.Label(info_box, textvariable=self.subgraph_info_vars["node_count"]).grid(row=0, column=3, sticky=tk.W)
@@ -550,7 +512,7 @@ class TrafficAnalyzerGUI(tk.Tk):
 
         self.status_var.set("结果已加载")
 
-    def _build_full_graph_from_csv(self) -> tuple[object, DSU, int, str]:
+    def _build_full_graph_from_csv(self) -> tuple[object, int, str]:
         if nx is None:
             raise ValueError("未安装 networkx，请先安装 requirements.txt 依赖")
 
@@ -561,7 +523,6 @@ class TrafficAnalyzerGUI(tk.Tk):
         rows, used_encoding = self._read_csv_rows_with_fallback(csv_path)
 
         graph = nx.DiGraph()
-        dsu = DSU()
         valid_row_count = 0
 
         for row in rows:
@@ -580,10 +541,6 @@ class TrafficAnalyzerGUI(tk.Tk):
             except (TypeError, ValueError):
                 duration = 0.0
 
-            dsu.add(src)
-            dsu.add(dst)
-            dsu.union(src, dst)
-
             if graph.has_edge(src, dst):
                 graph[src][dst]["weight"] += weight
                 graph[src][dst]["count"] += 1
@@ -593,20 +550,19 @@ class TrafficAnalyzerGUI(tk.Tk):
 
             valid_row_count += 1
 
-        return graph, dsu, valid_row_count, used_encoding
+        return graph, valid_row_count, used_encoding
 
     def _ensure_full_graph_ready(self) -> bool:
         if self.full_graph is not None and self.full_graph.number_of_nodes() > 0:
             return True
 
         try:
-            graph, dsu, valid_row_count, used_encoding = self._build_full_graph_from_csv()
+            graph, valid_row_count, used_encoding = self._build_full_graph_from_csv()
         except Exception as exc:
             messagebox.showerror("构图失败", str(exc))
             return False
 
         self.full_graph = graph
-        self.dsu = dsu
         self.append_log(f"[全图构建] 编码: {used_encoding}，有效记录: {valid_row_count}")
         self.append_log(f"[全图构建] 图规模: nodes={graph.number_of_nodes()}, edges={graph.number_of_edges()}")
         return True
@@ -616,15 +572,15 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.update_idletasks()
 
         try:
-            graph, dsu, valid_row_count, used_encoding = self._build_full_graph_from_csv()
+            graph, valid_row_count, used_encoding = self._build_full_graph_from_csv()
         except Exception as exc:
             self.status_var.set("构图失败")
             messagebox.showerror("构图失败", str(exc))
             return
 
         self.full_graph = graph
-        self.dsu = dsu
         self.current_subgraph_nodes = []
+        self.current_subgraph_graph = None
         self.subgraph_info_vars["component_root"].set("-")
         self.subgraph_info_vars["node_count"].set("-")
         self.subgraph_info_vars["edge_count"].set("-")
@@ -634,13 +590,9 @@ class TrafficAnalyzerGUI(tk.Tk):
         for item in self.subgraph_edge_tree.get_children():
             self.subgraph_edge_tree.delete(item)
 
-        self.append_log(f"[子图构图] 编码: {used_encoding}，有效记录: {valid_row_count}")
-        self.append_log(f"[子图构图] 图规模: nodes={graph.number_of_nodes()}, edges={graph.number_of_edges()}")
-        self.status_var.set("构图完成，可输入 IP 查询子图")
-
-        target_ip = self.subgraph_target_ip_var.get().strip()
-        if target_ip:
-            self.query_subgraph_by_ip()
+        self.append_log(f"[图缓存] 编码: {used_encoding}，有效记录: {valid_row_count}")
+        self.append_log(f"[图缓存] 图规模: nodes={graph.number_of_nodes()}, edges={graph.number_of_edges()}")
+        self.status_var.set("构图完成（用于路径查询）")
 
     def query_path_comparison(self) -> None:
         if nx is None:
@@ -768,68 +720,133 @@ class TrafficAnalyzerGUI(tk.Tk):
             f"对应总时延分别为 {hop_duration:.6f} 和 {cong_duration:.6f}。"
         )
 
-    def query_subgraph_by_ip(self) -> None:
-        if nx is None:
-            messagebox.showerror("查询失败", "未安装 networkx")
-            return
-        if self.full_graph is None:
-            messagebox.showinfo("提示", "请先点击“基于 CSV 构图”")
-            return
+    def _query_subgraph_via_backend(self, target_ip: str) -> tuple[dict, Path]:
+        exe_path = Path(self.exe_var.get())
+        csv_path = Path(self.csv_var.get())
+        output_path = REPO_ROOT / "data" / "output" / "subgraph.json"
 
+        if not exe_path.exists():
+            raise FileNotFoundError(f"可执行文件不存在: {exe_path}")
+        if not csv_path.exists():
+            raise FileNotFoundError(f"输入 CSV 不存在: {csv_path}")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path.exists():
+            output_path.unlink()
+
+        command = [str(exe_path), str(csv_path)]
+        interactive_input = f"subgraph_json\n{target_ip}\nexit\n"
+        completed = subprocess.run(
+            command,
+            cwd=str(REPO_ROOT),
+            input=interactive_input,
+            capture_output=True,
+            text=True,
+        )
+
+        self.append_log("[后端子图查询] " + " ".join(command))
+        if completed.stdout:
+            self.append_log(completed.stdout.strip())
+        if completed.stderr:
+            self.append_log(completed.stderr.strip())
+
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or f"后端返回错误码: {completed.returncode}")
+        if not output_path.exists():
+            raise RuntimeError(f"后端未生成子图结果文件: {output_path}")
+
+        payload, _ = self._read_json_with_fallback(output_path)
+        if not isinstance(payload, dict):
+            raise RuntimeError("后端子图结果格式无效")
+        return payload, output_path
+
+    def query_subgraph_by_ip(self) -> None:
         target_ip = self.subgraph_target_ip_var.get().strip()
         if not target_ip:
             messagebox.showinfo("提示", "请输入目标 IP")
             return
-        if target_ip not in self.dsu.parent:
-            messagebox.showerror("查询失败", f"在当前图中未找到 IP: {target_ip}")
+
+        self.status_var.set("正在调用后端查询子图...")
+        self.update_idletasks()
+
+        try:
+            payload, output_path = self._query_subgraph_via_backend(target_ip)
+        except Exception as exc:
+            self.status_var.set("子图查询失败")
+            messagebox.showerror("查询失败", str(exc))
             return
 
-        root = self.dsu.find(target_ip)
-        component_nodes = sorted(node for node in self.dsu.parent.keys() if self.dsu.find(node) == root)
-        self.current_subgraph_nodes = component_nodes
-
-        subgraph = self.full_graph.subgraph(component_nodes).copy()
-        self.subgraph_info_vars["component_root"].set(root)
-        self.subgraph_info_vars["node_count"].set(str(subgraph.number_of_nodes()))
-        self.subgraph_info_vars["edge_count"].set(str(subgraph.number_of_edges()))
+        nodes_raw = payload.get("nodes", []) if isinstance(payload.get("nodes", []), list) else []
+        edges_raw = payload.get("edges", []) if isinstance(payload.get("edges", []), list) else []
 
         for item in self.subgraph_node_tree.get_children():
             self.subgraph_node_tree.delete(item)
         for item in self.subgraph_edge_tree.get_children():
             self.subgraph_edge_tree.delete(item)
 
-        for node in component_nodes:
-            in_degree = subgraph.in_degree(node)
-            out_degree = subgraph.out_degree(node)
-            self.subgraph_node_tree.insert(
-                "",
-                tk.END,
-                values=(node, in_degree, out_degree, in_degree + out_degree),
-            )
+        node_ips: list[str] = []
+        for row in nodes_raw:
+            ip = str(row.get("ip", "")).strip()
+            if not ip:
+                continue
+            node_ips.append(ip)
+            in_degree = int(row.get("in_degree", 0) or 0)
+            out_degree = int(row.get("out_degree", 0) or 0)
+            degree = int(row.get("degree", in_degree + out_degree) or (in_degree + out_degree))
+            self.subgraph_node_tree.insert("", tk.END, values=(ip, in_degree, out_degree, degree))
 
-        edges = sorted(
-            subgraph.edges(data=True),
-            key=lambda item: item[2].get("weight", 0),
-            reverse=True,
-        )
-        for src, dst, data in edges[:500]:
+        aggregate_edges: dict[tuple[str, str], dict[str, float]] = {}
+        for row in edges_raw:
+            src = str(row.get("source_ip", "")).strip()
+            dst = str(row.get("destination_ip", "")).strip()
+            if not src or not dst:
+                continue
+            key = (src, dst)
+            entry = aggregate_edges.setdefault(key, {"weight": 0.0, "count": 0.0, "duration_sum": 0.0})
+            entry["weight"] += float(row.get("data_size", 0) or 0)
+            entry["count"] += 1.0
+            entry["duration_sum"] += float(row.get("duration", 0.0) or 0.0)
+
+        sorted_edges = sorted(aggregate_edges.items(), key=lambda item: item[1]["weight"], reverse=True)
+        for (src, dst), data in sorted_edges[:500]:
             self.subgraph_edge_tree.insert(
                 "",
                 tk.END,
-                values=(src, dst, data.get("weight", 0), data.get("count", 0)),
+                values=(src, dst, int(data["weight"]), int(data["count"])),
             )
 
+        node_count = int(payload.get("node_count", len(node_ips)) or len(node_ips))
+        edge_count = int(payload.get("edge_count", len(edges_raw)) or len(edges_raw))
+        out_reach = int(payload.get("outgoing_reachable_count", 0) or 0)
+        in_reach = int(payload.get("incoming_reachable_count", 0) or 0)
+
+        self.current_subgraph_nodes = sorted(set(node_ips))
+        if nx is not None:
+            graph = nx.DiGraph()
+            for node in self.current_subgraph_nodes:
+                graph.add_node(node)
+            for (src, dst), data in aggregate_edges.items():
+                graph.add_edge(src, dst, weight=int(data["weight"]), count=int(data["count"]), duration_sum=float(data["duration_sum"]))
+            self.current_subgraph_graph = graph
+        else:
+            self.current_subgraph_graph = None
+
+        self.subgraph_info_vars["component_root"].set(f"target={target_ip}, out={out_reach}, in={in_reach}")
+        self.subgraph_info_vars["node_count"].set(str(node_count))
+        self.subgraph_info_vars["edge_count"].set(str(edge_count))
+
         self.append_log(
-            f"[子图查询] target={target_ip}, root={root}, nodes={subgraph.number_of_nodes()}, edges={subgraph.number_of_edges()}"
+            f"[子图查询] backend_json={output_path}, target={target_ip}, out={out_reach}, in={in_reach}, "
+            f"nodes={node_count}, edges={edge_count}"
         )
-        self.status_var.set("子图查询完成")
+        self.status_var.set("子图查询完成（后端）")
 
     def export_subgraph_html(self) -> None:
         if nx is None:
             messagebox.showerror("导出失败", "未安装 networkx")
             return
-        if self.full_graph is None or not self.current_subgraph_nodes:
-            messagebox.showinfo("提示", "请先构图并查询目标 IP 的子图")
+        if self.current_subgraph_graph is None:
+            messagebox.showinfo("提示", "请先点击“查询该 IP 子图”（后端）")
             return
 
         target_ip = self.subgraph_target_ip_var.get().strip() or "subgraph"
@@ -842,7 +859,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         if not output_path:
             return
 
-        subgraph = self.full_graph.subgraph(self.current_subgraph_nodes).copy()
+        subgraph = self.current_subgraph_graph.copy()
         try:
             html_text = self._build_subgraph_html(
                 subgraph,
@@ -1037,13 +1054,19 @@ class TrafficAnalyzerGUI(tk.Tk):
                 positions = nx.spring_layout(undirected, seed=42, k=k_value, iterations=300)
         except ModuleNotFoundError as exc:
             missing_name = str(getattr(exc, "name", "") or "")
-            if missing_name == "numpy" or "numpy" in str(exc).lower():
+            msg = str(exc).lower()
+            if missing_name == "scipy" or "scipy" in msg:
+                # Fallback when scipy is unavailable in some environments.
+                k_value = max(0.18, min(0.9, 2.6 / (node_count ** 0.5)))
+                positions = nx.spring_layout(undirected, seed=42, k=k_value, iterations=300)
+            elif missing_name == "numpy" or "numpy" in msg:
                 raise RuntimeError(
                     "导出子图失败：当前 Python 环境缺少 numpy。"
                     "请先执行：python -m pip install -r requirements.txt，"
                     "并确认 UI 使用的是同一个解释器。"
                 ) from exc
-            raise
+            else:
+                raise
 
         if node_count > 180:
             width = 1800.0
@@ -1200,7 +1223,7 @@ class TrafficAnalyzerGUI(tk.Tk):
 </head>
 <body>
   <h2>目标 IP 子图可视化：{safe_target}</h2>
-    <div class=\"meta\">节点数: {node_count}，边数: {edge_count}。节点越大表示度越高；边越粗表示通信权重越大。当前导出模式: {'强制最小间距' if enforce_min_distance else '自然布局（不强制最小间距）'}。</div>
+    <div class=\"meta\">节点数: {node_count}，边数: {edge_count}。节点越大表示度越高；边越粗表示通信权重越大。当前导出模式: {'强制最小间距' if enforce_min_distance else '自然布局'}。</div>
   <div class=\"legend\">
     <span><span class=\"dot\" style=\"background:#f59e0b;border:1px solid #92400e\"></span>目标节点</span>
     <span><span class=\"dot\" style=\"background:#2563eb;border:1px solid #1e3a8a\"></span>高连接节点</span>

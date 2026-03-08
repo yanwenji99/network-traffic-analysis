@@ -1,5 +1,6 @@
 #include "check_star.h"
-#include <unordered_set>
+
+#include <algorithm>
 
 #define STAR_OUT_DEGREE_THRESHOLD 20
 
@@ -40,6 +41,63 @@ std::vector<StarNode> check_star(const CSRGraph &graph)
 
     return star_nodes;
 }
+
+// std::vector<StarNode> check_star(const CSRGraph &graph)
+// {
+//     const std::size_t node_count = graph.getNodeCount();
+//     const std::vector<int> &offset = graph.getOffset();
+//     const std::vector<Edge> &edges = graph.getEdges();
+
+//     // 构建无向邻接集合，避免入度和出度重复计数。
+//     std::vector<std::unordered_set<int>> undirected_neighbors(node_count);
+//     for (std::size_t from = 0; from < node_count; ++from)
+//     {
+//         for (int edge_idx = offset[from]; edge_idx < offset[from + 1]; ++edge_idx)
+//         {
+//             const int to = edges[edge_idx].to;
+//             if (to == static_cast<int>(from))
+//             {
+//                 continue;
+//             }
+
+//             undirected_neighbors[from].insert(to);
+//             undirected_neighbors[static_cast<std::size_t>(to)].insert(static_cast<int>(from));
+//         }
+//     }
+
+//     std::vector<StarNode> star_nodes;
+//     for (std::size_t i = 0; i < node_count; ++i)
+//     {
+//         if (undirected_neighbors[i].size() < STAR_DEGREE_THRESHOLD)
+//         {
+//             continue;
+//         }
+
+//         StarNode node;
+//         node.node_id = static_cast<int>(i);
+
+//         bool all_neighbors_are_leaf = true;
+//         for (int neighbor_id : undirected_neighbors[i])
+//         {
+//             const auto &neighbor_set = undirected_neighbors[static_cast<std::size_t>(neighbor_id)];
+//             if (neighbor_set.size() != 1 || neighbor_set.find(static_cast<int>(i)) == neighbor_set.end())
+//             {
+//                 all_neighbors_are_leaf = false;
+//                 break;
+//             }
+
+//             node.connected_nodes.push_back(neighbor_id);
+//         }
+
+//         if (all_neighbors_are_leaf)
+//         {
+//             std::sort(node.connected_nodes.begin(), node.connected_nodes.end());
+//             star_nodes.push_back(node);
+//         }
+//     }
+
+//     return star_nodes;
+// }
 
 void printf_star_result(const CSRGraph &graph, const std::vector<StarNode> &star_nodes)
 {
