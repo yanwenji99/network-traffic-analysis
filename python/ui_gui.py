@@ -43,11 +43,11 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.title("网络流量分析与异常检测系统")
         self.geometry("1220x800")
 
-        self.exe_var = tk.StringVar(value=str(DEFAULT_EXE))
-        self.csv_var = tk.StringVar(value=str(DEFAULT_INPUT_CSV))
-        self.json_var = tk.StringVar(value=str(DEFAULT_OUTPUT_JSON))
-        self.pcap_var = tk.StringVar(value=str(DEFAULT_INPUT_PCAP))
-        self.pcap_csv_var = tk.StringVar(value=str(DEFAULT_INPUT_CSV))
+        self.exe_var = tk.StringVar(value=self._to_display_path(DEFAULT_EXE))
+        self.csv_var = tk.StringVar(value=self._to_display_path(DEFAULT_INPUT_CSV))
+        self.json_var = tk.StringVar(value=self._to_display_path(DEFAULT_OUTPUT_JSON))
+        self.pcap_var = tk.StringVar(value=self._to_display_path(DEFAULT_INPUT_PCAP))
+        self.pcap_csv_var = tk.StringVar(value=self._to_display_path(DEFAULT_INPUT_CSV))
         self.status_var = tk.StringVar(value="就绪")
         self.subgraph_target_ip_var = tk.StringVar(value="")
         self.enforce_node_spacing_var = tk.BooleanVar(value=False)
@@ -94,18 +94,21 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.notebook.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
 
         self.page_data = ttk.Frame(self.notebook, padding=10)
+        self.page_sort = ttk.Frame(self.notebook, padding=10)
         self.page_abnormal = ttk.Frame(self.notebook, padding=10)
         self.page_path = ttk.Frame(self.notebook, padding=10)
         self.page_subgraph = ttk.Frame(self.notebook, padding=10)
         self.page_log = ttk.Frame(self.notebook, padding=10)
 
         self.notebook.add(self.page_data, text="数据获取与总览")
+        self.notebook.add(self.page_sort, text="排序分析")
         self.notebook.add(self.page_abnormal, text="异常识别")
         self.notebook.add(self.page_path, text="路径查找")
         self.notebook.add(self.page_subgraph, text="子图可视化")
         self.notebook.add(self.page_log, text="运行日志")
 
         self._build_data_page()
+        self._build_sort_page()
         self._build_abnormal_page()
         self._build_path_page()
         self._build_subgraph_page()
@@ -168,45 +171,62 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.protocol_tree.column("flow_count", width=120, anchor=tk.E)
         self.protocol_tree.pack(fill=tk.BOTH, expand=True)
 
-    def _build_abnormal_page(self) -> None:
-        grid_root = ttk.Frame(self.page_abnormal)
+    def _build_sort_page(self) -> None:
+        grid_root = ttk.Frame(self.page_sort)
         grid_root.pack(fill=tk.BOTH, expand=True)
-        for row in range(3):
-            grid_root.rowconfigure(row, weight=1, uniform="abn_row")
-        for col in range(2):
-            grid_root.columnconfigure(col, weight=1, uniform="abn_col")
+        grid_root.rowconfigure(0, weight=1)
+        for col in range(3):
+            grid_root.columnconfigure(col, weight=1, uniform="sort_col")
 
-        left = ttk.LabelFrame(grid_root, text="HTTPS 节点 Top10", padding=10)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 6))
+        total_box = ttk.LabelFrame(grid_root, text="总量节点 Top10", padding=10)
+        total_box.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
 
-        self.https_tree = ttk.Treeview(left, columns=("node", "traffic"), show="headings", height=12)
+        self.total_tree = ttk.Treeview(total_box, columns=("node", "traffic"), show="headings", height=18)
+        self.total_tree.heading("node", text="节点 IP")
+        self.total_tree.heading("traffic", text="总流量")
+        self.total_tree.column("node", width=210)
+        self.total_tree.column("traffic", width=120, anchor=tk.E)
+        self.total_tree.pack(fill=tk.BOTH, expand=True)
+
+        https_box = ttk.LabelFrame(grid_root, text="HTTPS 节点 Top10", padding=10)
+        https_box.grid(row=0, column=1, sticky="nsew", padx=6)
+
+        self.https_tree = ttk.Treeview(https_box, columns=("node", "traffic"), show="headings", height=18)
         self.https_tree.heading("node", text="节点 IP")
         self.https_tree.heading("traffic", text="总流量")
-        self.https_tree.column("node", width=220)
+        self.https_tree.column("node", width=210)
         self.https_tree.column("traffic", width=120, anchor=tk.E)
         self.https_tree.pack(fill=tk.BOTH, expand=True)
 
-        right = ttk.LabelFrame(grid_root, text="单向高占比节点 Top10", padding=10)
-        right.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 6))
+        one_way_box = ttk.LabelFrame(grid_root, text="单向高占比节点 Top10", padding=10)
+        one_way_box.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
 
         self.one_way_tree = ttk.Treeview(
-            right,
+            one_way_box,
             columns=("node", "total", "outgoing", "ratio"),
             show="headings",
-            height=12,
+            height=18,
         )
         self.one_way_tree.heading("node", text="节点 IP")
         self.one_way_tree.heading("total", text="总流量")
         self.one_way_tree.heading("outgoing", text="外发流量")
         self.one_way_tree.heading("ratio", text="外发占比")
-        self.one_way_tree.column("node", width=210)
-        self.one_way_tree.column("total", width=110, anchor=tk.E)
-        self.one_way_tree.column("outgoing", width=110, anchor=tk.E)
-        self.one_way_tree.column("ratio", width=90, anchor=tk.E)
+        self.one_way_tree.column("node", width=190)
+        self.one_way_tree.column("total", width=95, anchor=tk.E)
+        self.one_way_tree.column("outgoing", width=95, anchor=tk.E)
+        self.one_way_tree.column("ratio", width=85, anchor=tk.E)
         self.one_way_tree.pack(fill=tk.BOTH, expand=True)
 
+    def _build_abnormal_page(self) -> None:
+        grid_root = ttk.Frame(self.page_abnormal)
+        grid_root.pack(fill=tk.BOTH, expand=True)
+        for row in range(2):
+            grid_root.rowconfigure(row, weight=1, uniform="abn_row")
+        for col in range(2):
+            grid_root.columnconfigure(col, weight=1, uniform="abn_col")
+
         star_box = ttk.LabelFrame(grid_root, text="星型结构节点", padding=10)
-        star_box.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=(6, 6))
+        star_box.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 6))
 
         self.star_tree = ttk.Treeview(star_box, columns=("center", "leaf_count"), show="headings", height=10)
         self.star_tree.heading("center", text="中心节点 IP")
@@ -217,7 +237,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.star_tree.bind("<<TreeviewSelect>>", self._on_star_select)
 
         scan_box = ttk.LabelFrame(grid_root, text="扫描可疑节点", padding=10)
-        scan_box.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=(6, 6))
+        scan_box.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 6))
 
         self.scan_tree = ttk.Treeview(scan_box, columns=("node",), show="headings", height=10)
         self.scan_tree.heading("node", text="节点 IP")
@@ -225,7 +245,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.scan_tree.pack(fill=tk.BOTH, expand=True)
 
         leaf_box = ttk.LabelFrame(grid_root, text="叶子节点详情", padding=10)
-        leaf_box.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
+        leaf_box.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(6, 0))
 
         self.leaf_text = tk.Text(leaf_box, wrap=tk.WORD)
         self.leaf_text.pack(fill=tk.BOTH, expand=True)
@@ -375,32 +395,48 @@ class TrafficAnalyzerGUI(tk.Tk):
         ttk.Entry(row, textvariable=variable).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
         ttk.Button(row, text="...", width=3, command=pick_cmd).pack(side=tk.LEFT)
 
+    def _to_display_path(self, path: Path) -> str:
+        resolved = path.resolve()
+        try:
+            return str(resolved.relative_to(REPO_ROOT))
+        except ValueError:
+            return str(resolved)
+
+    def _resolve_user_path(self, value: str) -> Path:
+        raw = value.strip()
+        path = Path(raw).expanduser()
+        if path.is_absolute():
+            return path
+        return (REPO_ROOT / path).resolve()
+
     def _pick_exe(self) -> None:
         selected = filedialog.askopenfilename(filetypes=[("Executable", "*.exe"), ("All", "*.*")])
         if selected:
-            self.exe_var.set(selected)
+            self.exe_var.set(self._to_display_path(Path(selected)))
 
     def _pick_csv(self) -> None:
         selected = filedialog.askopenfilename(filetypes=[("CSV", "*.csv"), ("All", "*.*")])
         if selected:
-            self.csv_var.set(selected)
-            self.pcap_csv_var.set(selected)
+            display_path = self._to_display_path(Path(selected))
+            self.csv_var.set(display_path)
+            self.pcap_csv_var.set(display_path)
 
     def _pick_json(self) -> None:
         selected = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
         if selected:
-            self.json_var.set(selected)
+            self.json_var.set(self._to_display_path(Path(selected)))
 
     def _pick_pcap(self) -> None:
         selected = filedialog.askopenfilename(filetypes=[("PCAP", "*.pcap"), ("All", "*.*")])
         if selected:
-            self.pcap_var.set(selected)
+            self.pcap_var.set(self._to_display_path(Path(selected)))
 
     def _pick_pcap_csv(self) -> None:
         selected = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
         if selected:
-            self.pcap_csv_var.set(selected)
-            self.csv_var.set(selected)
+            display_path = self._to_display_path(Path(selected))
+            self.pcap_csv_var.set(display_path)
+            self.csv_var.set(display_path)
 
     def append_log(self, text: str) -> None:
         self.log_text.configure(state=tk.NORMAL)
@@ -409,8 +445,14 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.log_text.configure(state=tk.DISABLED)
 
     def extract_pcap(self) -> None:
-        pcap_path = Path(self.pcap_var.get())
-        csv_path = Path(self.pcap_csv_var.get())
+        pcap_input = self.pcap_var.get().strip()
+        csv_output = self.pcap_csv_var.get().strip()
+        if not pcap_input or not csv_output:
+            messagebox.showerror("提取失败", "请输入 Input PCAP 和 Output CSV 路径")
+            return
+
+        pcap_path = self._resolve_user_path(pcap_input)
+        csv_path = self._resolve_user_path(csv_output)
 
         if not pcap_path.exists():
             messagebox.showerror("提取失败", f"PCAP 文件不存在: {pcap_path}")
@@ -448,9 +490,16 @@ class TrafficAnalyzerGUI(tk.Tk):
         messagebox.showinfo("提取成功", f"CSV 已生成:\n{csv_path}")
 
     def run_batch(self) -> None:
-        exe_path = Path(self.exe_var.get())
-        csv_path = Path(self.csv_var.get())
-        json_path = Path(self.json_var.get())
+        exe_input = self.exe_var.get().strip()
+        csv_input = self.csv_var.get().strip()
+        json_output = self.json_var.get().strip()
+        if not exe_input or not csv_input or not json_output:
+            messagebox.showerror("运行失败", "请输入 C++ EXE、Input CSV 和 Output JSON 路径")
+            return
+
+        exe_path = self._resolve_user_path(exe_input)
+        csv_path = self._resolve_user_path(csv_input)
+        json_path = self._resolve_user_path(json_output)
 
         if not exe_path.exists():
             messagebox.showerror("运行失败", f"可执行文件不存在: {exe_path}")
@@ -482,7 +531,12 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.load_json()
 
     def load_json(self) -> None:
-        json_path = Path(self.json_var.get())
+        json_input = self.json_var.get().strip()
+        if not json_input:
+            messagebox.showerror("加载失败", "请输入 Output JSON 路径")
+            return
+
+        json_path = self._resolve_user_path(json_input)
         if not json_path.exists():
             messagebox.showerror("加载失败", f"结果文件不存在: {json_path}")
             return
@@ -501,10 +555,19 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.summary_vars["total_data_size"].set(str(result.get("total_data_size", "-")))
         self.summary_vars["total_duration"].set(str(result.get("total_duration", "-")))
 
+        total_rows_raw = result.get("all_nodes_by_traffic", [])
+        if isinstance(total_rows_raw, list) and total_rows_raw:
+            total_rows = total_rows_raw
+        else:
+            total_rows = self._build_total_nodes_by_csv(limit=10)
+            if total_rows:
+                self.append_log("[排序分析] JSON 缺少 all_nodes_by_traffic，已基于 CSV 回退计算。")
+
         self._refresh_protocol(
             result.get("protocol_data_size", {}),
             result.get("protocol_flow_count", {}),
         )
+        self._refresh_total(total_rows)
         self._refresh_https(result.get("https_nodes_by_traffic", []))
         self._refresh_one_way(result.get("one_way_heavy_nodes_by_traffic", []))
         self._refresh_star(result.get("star_nodes", []))
@@ -516,7 +579,11 @@ class TrafficAnalyzerGUI(tk.Tk):
         if nx is None:
             raise ValueError("未安装 networkx，请先安装 requirements.txt 依赖")
 
-        csv_path = Path(self.csv_var.get())
+        csv_input = self.csv_var.get().strip()
+        if not csv_input:
+            raise FileNotFoundError("输入 CSV 路径为空")
+
+        csv_path = self._resolve_user_path(csv_input)
         if not csv_path.exists():
             raise FileNotFoundError(f"输入 CSV 不存在: {csv_path}")
 
@@ -721,8 +788,13 @@ class TrafficAnalyzerGUI(tk.Tk):
         )
 
     def _query_subgraph_via_backend(self, target_ip: str) -> tuple[dict, Path]:
-        exe_path = Path(self.exe_var.get())
-        csv_path = Path(self.csv_var.get())
+        exe_input = self.exe_var.get().strip()
+        csv_input = self.csv_var.get().strip()
+        if not exe_input or not csv_input:
+            raise FileNotFoundError("C++ EXE 或 Input CSV 路径为空")
+
+        exe_path = self._resolve_user_path(exe_input)
+        csv_path = self._resolve_user_path(csv_input)
         output_path = REPO_ROOT / "data" / "output" / "subgraph.json"
 
         if not exe_path.exists():
@@ -1306,6 +1378,54 @@ class TrafficAnalyzerGUI(tk.Tk):
                 "",
                 tk.END,
                 values=(protocol_id, protocol_name, traffic, flow_count),
+            )
+
+    def _build_total_nodes_by_csv(self, limit: int = 10) -> list[dict[str, int | str]]:
+        csv_input = self.csv_var.get().strip()
+        if not csv_input:
+            return []
+
+        csv_path = self._resolve_user_path(csv_input)
+        if not csv_path.exists():
+            return []
+
+        try:
+            rows, _ = self._read_csv_rows_with_fallback(csv_path)
+        except Exception:
+            return []
+
+        total_by_node: dict[str, int] = {}
+        for row in rows:
+            src = str(row.get("Source", "")).strip()
+            dst = str(row.get("Destination", "")).strip()
+            try:
+                data_size = int(float(row.get("DataSize", 0) or 0))
+            except (TypeError, ValueError):
+                data_size = 0
+
+            if src:
+                total_by_node[src] = total_by_node.get(src, 0) + data_size
+            if dst:
+                total_by_node[dst] = total_by_node.get(dst, 0) + data_size
+
+        ranked = sorted(total_by_node.items(), key=lambda item: item[1], reverse=True)
+        return [
+            {"node": node, "total_traffic": traffic}
+            for node, traffic in ranked[: max(0, limit)]
+        ]
+
+    def _refresh_total(self, rows: list[dict]) -> None:
+        for item in self.total_tree.get_children():
+            self.total_tree.delete(item)
+
+        for row in rows[:10]:
+            self.total_tree.insert(
+                "",
+                tk.END,
+                values=(
+                    row.get("node", "-"),
+                    row.get("total_traffic", 0),
+                ),
             )
 
     def _refresh_https(self, rows: list[dict]) -> None:

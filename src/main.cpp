@@ -233,6 +233,34 @@ namespace
 
         const std::size_t top_limit = 10;
 
+        out << "  \"all_nodes_by_traffic\": [\n";
+        std::vector<BatchNodeStat> top_all_nodes;
+        top_all_nodes.reserve(top_limit);
+        for (const auto &item : all_stats)
+        {
+            if (item.total_data_size == 0)
+            {
+                continue;
+            }
+            top_all_nodes.push_back(item);
+            if (top_all_nodes.size() >= top_limit)
+            {
+                break;
+            }
+        }
+        for (std::size_t i = 0; i < top_all_nodes.size(); ++i)
+        {
+            const auto &item = top_all_nodes[i];
+            const std::string ip = graph.getIpById(item.node_id);
+            out << "    {\"node\": \"" << escape_json(ip) << "\", \"total_traffic\": " << item.total_data_size << "}";
+            if (i + 1 < top_all_nodes.size())
+            {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+
         out << "  \"https_nodes_by_traffic\": [\n";
         std::size_t https_written = 0;
         for (const auto &item : https_stats)

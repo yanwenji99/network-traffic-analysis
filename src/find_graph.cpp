@@ -40,19 +40,20 @@ namespace
 
     std::vector<int> bfs_collect(const std::vector<std::vector<int>> &adj, int start)
     {
-        const std::size_t n = adj.size();
-        std::vector<char> visited(n, 0);
-        std::queue<int> q;
+        const std::size_t n = adj.size(); // 节点总数
+        std::vector<bool> visited(n, 0);  // 访问标记数组
+        std::queue<int> q;                // BFS队列
         visited[static_cast<std::size_t>(start)] = 1;
         q.push(start);
 
         std::vector<int> collected;
         while (!q.empty())
         {
-            int current = q.front();
+            int current = q.front(); // 取出队首节点
             q.pop();
             collected.push_back(current);
 
+            // 遍历当前节点的所有邻接节点
             for (int next : adj[static_cast<std::size_t>(current)])
             {
                 if (next >= 0 && static_cast<std::size_t>(next) < n && !visited[static_cast<std::size_t>(next)])
@@ -63,7 +64,7 @@ namespace
             }
         }
 
-        return collected;
+        return collected; // 可达节点列表（包含起始节点）
     }
 } // namespace
 
@@ -87,7 +88,7 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
     const std::vector<int> &offset = graph.getOffset();
     const std::vector<Edge> &edges = graph.getEdges();
 
-    // Build directed and reverse adjacency once.
+    // 构建正向和反向邻接表，用于BFS遍历
     std::vector<std::vector<int>> forward_adj(node_count);
     std::vector<std::vector<int>> reverse_adj(node_count);
     for (std::size_t from = 0; from < node_count; ++from)
@@ -97,16 +98,18 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
             const int to = edges[i].to;
             if (to >= 0 && static_cast<std::size_t>(to) < node_count)
             {
-                forward_adj[from].push_back(to);
-                reverse_adj[static_cast<std::size_t>(to)].push_back(static_cast<int>(from));
+                forward_adj[from].push_back(to); // 添加到正向邻接表
+                reverse_adj[static_cast<std::size_t>(to)].push_back(static_cast<int>(from)); // 添加到反向邻接表
             }
         }
     }
 
+    // 分别收集从目标节点出发可到达的节点（正向）和可以到达目标节点的节点（反向）
     const std::vector<int> outgoing_nodes = bfs_collect(forward_adj, target_id);
     const std::vector<int> incoming_nodes = bfs_collect(reverse_adj, target_id);
 
-    std::vector<char> in_subgraph(node_count, 0);
+    // 标记哪些节点属于子图
+    std::vector<bool> in_subgraph(node_count, 0);
     for (int node_id : outgoing_nodes)
     {
         in_subgraph[static_cast<std::size_t>(node_id)] = 1;
@@ -119,6 +122,7 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
     result.outgoing_reachable_count = outgoing_nodes.empty() ? 0 : outgoing_nodes.size() - 1;
     result.incoming_reachable_count = incoming_nodes.empty() ? 0 : incoming_nodes.size() - 1;
 
+    // 收集所有子图节点的ID
     for (std::size_t node_id = 0; node_id < node_count; ++node_id)
     {
         if (in_subgraph[node_id])
@@ -127,12 +131,14 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
         }
     }
 
+    // 获取每个节点对应的IP地址
     std::sort(result.node_ids.begin(), result.node_ids.end());
     for (int node_id : result.node_ids)
     {
         result.node_ips.push_back(graph.getIpById(static_cast<std::size_t>(node_id)));
     }
 
+    // 收集子图内的所有边
     for (int from_id : result.node_ids)
     {
         const std::size_t from = static_cast<std::size_t>(from_id);

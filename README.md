@@ -14,7 +14,8 @@
 - 批处理模式导出 `JSON` 分析结果（`--json-out`）
 - Tkinter UI：
   - 数据获取与总览
-  - 异常识别（三行等分布局）
+  - 排序分析（总量 / HTTPS / 单向）
+  - 异常识别（星型 / 扫描 / 叶子详情）
   - 路径查找（最小跳数 / 最小拥塞 / 路径对比）
   - 子图可视化（networkx + DSU）
   - 运行日志
@@ -196,6 +197,7 @@ Source,Destination,Protocol,SrcPort,DstPort,DataSize,Duration
 - `total_duration`：总持续时长
 - `protocol_data_size`：各协议号总流量（动态）
 - `protocol_flow_count`：各协议号会话数（动态）
+- `all_nodes_by_traffic`：总量节点 Top10
 - `https_nodes_by_traffic`：HTTPS 相关节点 Top10
 - `one_way_heavy_nodes_by_traffic`：单向高占比节点 Top10
 - `star_nodes`：星型结构节点列表
@@ -216,13 +218,23 @@ Source,Destination,Protocol,SrcPort,DstPort,DataSize,Duration
 - 一键运行批处理并加载 JSON
 - 展示统计摘要与协议流量表（协议号动态识别）
 
-### 9.2 异常识别（3 行等分）
+### 9.2 排序分析
 
-- 第 1 行：`HTTPS 节点 Top10` + `单向高占比节点 Top10`
-- 第 2 行：`星型结构节点` + `扫描可疑节点`
-- 第 3 行：`叶子节点详情`
+- 左侧：`总量节点 Top10`
+- 中间：`HTTPS 节点 Top10`
+- 右侧：`单向高占比节点 Top10`
 
-### 9.3 子图可视化（networkx + DSU）
+说明：
+
+- 优先读取 JSON 中的 `all_nodes_by_traffic`。
+- 若 JSON 为旧版本且缺少该字段，UI 会基于当前 CSV 自动回退计算 Top10。
+
+### 9.3 异常识别
+
+- 第 1 行：`星型结构节点` + `扫描可疑节点`
+- 第 2 行：`叶子节点详情`
+
+### 9.4 子图可视化（networkx + DSU）
 
 流程：
 
@@ -231,7 +243,7 @@ Source,Destination,Protocol,SrcPort,DstPort,DataSize,Duration
 3. 查看节点/边统计与列表
 4. 导出子图 HTML
 
-### 9.4 路径查找（新增）
+### 9.5 路径查找（新增）
 
 在“路径查找”页可进行：
 
@@ -245,7 +257,7 @@ Source,Destination,Protocol,SrcPort,DstPort,DataSize,Duration
 2. 点击“基于 CSV 构图”（首次查询建议先点击）
 3. 点击“路径对比查询”查看两条路径和对比结论
 
-### 9.5 运行日志
+### 9.6 运行日志
 
 显示提取、分析、加载、导出等操作日志。
 
