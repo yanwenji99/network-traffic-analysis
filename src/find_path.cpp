@@ -110,6 +110,11 @@ PathResult BFS(const CSRGraph &graph, const char *src_ip, const char *dst_ip)
             {
                 result.total_duration += edges[idx].flow.duration;
                 result.total_data_size += edges[idx].flow.data_size;
+                const double duration = edges[idx].flow.duration;
+                if (duration > 1e-9)
+                {
+                    result.jamb_score += static_cast<double>(edges[idx].flow.data_size) / duration;
+                }
                 break;
             }
         }
@@ -199,6 +204,8 @@ PathResult Dejkstra(const CSRGraph &graph, const char *src_ip, const char *dst_i
     {
         return result; // 未找到路径，返回空结果
     }
+
+    result.jamb_score = distance[dst_id];
 
     // 路径重建：从目标节点回溯到源节点
     std::vector<int> reversed_path;

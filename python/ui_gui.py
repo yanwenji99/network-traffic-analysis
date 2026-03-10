@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EXE = REPO_ROOT / "build" / "bin" / "main.exe"
 DEFAULT_INPUT_CSV = REPO_ROOT / "data" / "network_data.csv"
 DEFAULT_OUTPUT_JSON = REPO_ROOT / "data" / "output" / "results.json"
+DEFAULT_PATH_COMPARE_JSON = REPO_ROOT / "data" / "output" / "path_compare.json"
 DEFAULT_INPUT_PCAP = REPO_ROOT / "data" / "catch_data.pcap"
 DEFAULT_PCAP_SCRIPT = REPO_ROOT / "scripts" / "pcap_to_csv.py"
 
@@ -54,6 +55,9 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.path_source_var = tk.StringVar(value="")
         self.path_destination_var = tk.StringVar(value="")
         self.path_compare_var = tk.StringVar(value="请输入源 IP 与目的 IP 后查询路径对比")
+        self.range_source_var = tk.StringVar(value="")
+        self.range_start_var = tk.StringVar(value="")
+        self.range_end_var = tk.StringVar(value="")
 
         self.summary_vars = {
             "flow_count": tk.StringVar(value="-"),
@@ -96,6 +100,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.page_data = ttk.Frame(self.notebook, padding=10)
         self.page_sort = ttk.Frame(self.notebook, padding=10)
         self.page_abnormal = ttk.Frame(self.notebook, padding=10)
+        self.page_range = ttk.Frame(self.notebook, padding=10)
         self.page_path = ttk.Frame(self.notebook, padding=10)
         self.page_subgraph = ttk.Frame(self.notebook, padding=10)
         self.page_log = ttk.Frame(self.notebook, padding=10)
@@ -103,6 +108,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.notebook.add(self.page_data, text="数据获取与总览")
         self.notebook.add(self.page_sort, text="排序分析")
         self.notebook.add(self.page_abnormal, text="异常识别")
+        self.notebook.add(self.page_range, text="范围检测")
         self.notebook.add(self.page_path, text="路径查找")
         self.notebook.add(self.page_subgraph, text="子图可视化")
         self.notebook.add(self.page_log, text="运行日志")
@@ -110,6 +116,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self._build_data_page()
         self._build_sort_page()
         self._build_abnormal_page()
+        self._build_range_page()
         self._build_path_page()
         self._build_subgraph_page()
         self._build_log_page()
@@ -118,11 +125,9 @@ class TrafficAnalyzerGUI(tk.Tk):
         status.pack(fill=tk.X, pady=(8, 0))
 
     def _build_data_page(self) -> None:
-        path_box = ttk.LabelFrame(self.page_data, text="运行路径", padding=10)
+        path_box = ttk.LabelFrame(self.page_data, text="数据输入", padding=10)
         path_box.pack(fill=tk.X)
-        self._path_row(path_box, "C++ EXE", self.exe_var, self._pick_exe)
         self._path_row(path_box, "Input CSV", self.csv_var, self._pick_csv)
-        self._path_row(path_box, "Output JSON", self.json_var, self._pick_json)
 
         pcap_box = ttk.LabelFrame(self.page_data, text="PCAP 提取（可选）", padding=10)
         pcap_box.pack(fill=tk.X, pady=(8, 0))
@@ -133,7 +138,11 @@ class TrafficAnalyzerGUI(tk.Tk):
         action_box.pack(fill=tk.X, pady=(10, 0))
         ttk.Button(action_box, text="从 PCAP 提取 CSV", command=self.extract_pcap).pack(side=tk.LEFT)
         ttk.Button(action_box, text="运行批处理分析", command=self.run_batch).pack(side=tk.LEFT, padx=8)
-        ttk.Button(action_box, text="加载 JSON 结果", command=self.load_json).pack(side=tk.LEFT)
+
+        ttk.Label(
+            self.page_data,
+            text="说明: 首页默认使用内置运行参数并自动加载分析结果。",
+        ).pack(anchor=tk.W, pady=(6, 0))
 
         self._build_summary_page(self.page_data)
 
@@ -251,6 +260,47 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.leaf_text.pack(fill=tk.BOTH, expand=True)
         self.leaf_text.configure(state=tk.DISABLED)
 
+    def _build_range_page(self) -> None:
+        controls = ttk.LabelFrame(self.page_range, text="范围检测参数", padding=10)
+        controls.pack(fill=tk.X)
+
+        ttk.Label(controls, text="源 IP", width=8).grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(controls, textvariable=self.range_source_var, width=24).grid(row=0, column=1, sticky=tk.W, padx=(6, 14))
+
+        ttk.Label(controls, text="起始 IP", width=8).grid(row=0, column=2, sticky=tk.W)
+        ttk.Entry(controls, textvariable=self.range_start_var, width=24).grid(row=0, column=3, sticky=tk.W, padx=(6, 14))
+
+        ttk.Label(controls, text="结束 IP", width=8).grid(row=0, column=4, sticky=tk.W)
+        ttk.Entry(controls, textvariable=self.range_end_var, width=24).grid(row=0, column=5, sticky=tk.W, padx=(6, 14))
+
+        ttk.Button(controls, text="应用参数并重新分析", command=self.run_batch).grid(row=0, column=6, sticky=tk.W)
+
+        ttk.Label(
+            self.page_range,
+            text="说明: 点击按钮后会执行批处理，并按当前参数刷新范围检测结果。",
+        ).pack(anchor=tk.W, pady=(8, 0))
+
+        table_box = ttk.LabelFrame(self.page_range, text="范围检测结果", padding=10)
+        table_box.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        self.range_tree = ttk.Treeview(
+            table_box,
+            columns=("source", "destination", "protocol", "data_size", "duration"),
+            show="headings",
+            height=16,
+        )
+        self.range_tree.heading("source", text="源 IP")
+        self.range_tree.heading("destination", text="目的 IP")
+        self.range_tree.heading("protocol", text="协议")
+        self.range_tree.heading("data_size", text="数据量")
+        self.range_tree.heading("duration", text="时长")
+        self.range_tree.column("source", width=240)
+        self.range_tree.column("destination", width=240)
+        self.range_tree.column("protocol", width=100, anchor=tk.CENTER)
+        self.range_tree.column("data_size", width=140, anchor=tk.E)
+        self.range_tree.column("duration", width=140, anchor=tk.E)
+        self.range_tree.pack(fill=tk.BOTH, expand=True)
+
     def _build_path_page(self) -> None:
         controls = ttk.LabelFrame(self.page_path, text="路径查询参数", padding=10)
         controls.pack(fill=tk.X)
@@ -261,8 +311,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         ttk.Label(controls, text="目的 IP", width=10).grid(row=0, column=2, sticky=tk.W)
         ttk.Entry(controls, textvariable=self.path_destination_var, width=24).grid(row=0, column=3, sticky=tk.W, padx=(6, 14))
 
-        ttk.Button(controls, text="基于 CSV 构图", command=self.build_graph_for_subgraph).grid(row=0, column=4, padx=(6, 8), sticky=tk.W)
-        ttk.Button(controls, text="路径对比查询", command=self.query_path_comparison).grid(row=0, column=5, padx=(0, 8), sticky=tk.W)
+        ttk.Button(controls, text="路径对比查询", command=self.query_path_comparison).grid(row=0, column=4, padx=(6, 8), sticky=tk.W)
 
         result = ttk.Frame(self.page_path)
         result.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
@@ -497,6 +546,12 @@ class TrafficAnalyzerGUI(tk.Tk):
             messagebox.showerror("运行失败", "请输入 C++ EXE、Input CSV 和 Output JSON 路径")
             return
 
+        try:
+            range_args = self._build_range_cli_args()
+        except ValueError as exc:
+            messagebox.showerror("运行失败", str(exc))
+            return
+
         exe_path = self._resolve_user_path(exe_input)
         csv_path = self._resolve_user_path(csv_input)
         json_path = self._resolve_user_path(json_output)
@@ -513,7 +568,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.status_var.set("正在执行批处理分析...")
         self.update_idletasks()
 
-        command = [str(exe_path), str(csv_path), "--json-out", str(json_path)]
+        command = [str(exe_path), str(csv_path), "--json-out", str(json_path), *range_args]
         completed = subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True, text=True)
 
         self.append_log("[批处理分析] " + " ".join(command))
@@ -555,6 +610,12 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.summary_vars["total_data_size"].set(str(result.get("total_data_size", "-")))
         self.summary_vars["total_duration"].set(str(result.get("total_duration", "-")))
 
+        range_config = result.get("range_check_config", {})
+        if isinstance(range_config, dict):
+            self.range_source_var.set(str(range_config.get("source_ip", self.range_source_var.get())))
+            self.range_start_var.set(str(range_config.get("start_ip", self.range_start_var.get())))
+            self.range_end_var.set(str(range_config.get("end_ip", self.range_end_var.get())))
+
         total_rows_raw = result.get("all_nodes_by_traffic", [])
         if isinstance(total_rows_raw, list) and total_rows_raw:
             total_rows = total_rows_raw
@@ -572,8 +633,30 @@ class TrafficAnalyzerGUI(tk.Tk):
         self._refresh_one_way(result.get("one_way_heavy_nodes_by_traffic", []))
         self._refresh_star(result.get("star_nodes", []))
         self._refresh_scan(result.get("scan_nodes", []))
+        self._refresh_range(result.get("range_flows", []))
 
         self.status_var.set("结果已加载")
+
+    def _build_range_cli_args(self) -> list[str]:
+        source_ip = self.range_source_var.get().strip()
+        start_ip = self.range_start_var.get().strip()
+        end_ip = self.range_end_var.get().strip()
+
+        provided = [bool(source_ip), bool(start_ip), bool(end_ip)]
+        if any(provided) and not all(provided):
+            raise ValueError("范围检测参数需要同时填写：源 IP、起始 IP、结束 IP")
+
+        if not any(provided):
+            return []
+
+        return [
+            "--range-source",
+            source_ip,
+            "--range-start",
+            start_ip,
+            "--range-end",
+            end_ip,
+        ]
 
     def _build_full_graph_from_csv(self) -> tuple[object, int, str]:
         if nx is None:
@@ -662,54 +745,182 @@ class TrafficAnalyzerGUI(tk.Tk):
         self.status_var.set("构图完成（用于路径查询）")
 
     def query_path_comparison(self) -> None:
-        if nx is None:
-            messagebox.showerror("查询失败", "未安装 networkx")
-            return
-
         src_ip = self.path_source_var.get().strip()
         dst_ip = self.path_destination_var.get().strip()
         if not src_ip or not dst_ip:
             messagebox.showinfo("提示", "请输入源 IP 和目的 IP")
             return
 
-        if not self._ensure_full_graph_ready():
+        try:
+            payload, output_path = self._query_path_via_backend(src_ip, dst_ip)
+        except Exception as exc:
             self.status_var.set("路径查询失败")
+            messagebox.showerror("查询失败", str(exc))
             return
 
-        graph = self.full_graph
-        if src_ip not in graph.nodes:
-            messagebox.showerror("查询失败", f"源 IP 不在图中: {src_ip}")
+        bfs_payload = payload.get("bfs", {}) if isinstance(payload.get("bfs", {}), dict) else {}
+        dijkstra_payload = payload.get("dijkstra", {}) if isinstance(payload.get("dijkstra", {}), dict) else {}
+
+        self._update_path_result_panel_from_backend(self.path_hops_vars, self.path_hops_text, bfs_payload)
+        self._update_path_result_panel_from_backend(self.path_congestion_vars, self.path_congestion_text, dijkstra_payload)
+        self._update_path_compare_summary_from_backend(src_ip, dst_ip, bfs_payload, dijkstra_payload)
+
+        self.append_log(f"[路径对比-后端] src={src_ip}, dst={dst_ip}, output={output_path}")
+        self.status_var.set("路径对比查询完成（后端）")
+
+    def _query_path_via_backend(self, src_ip: str, dst_ip: str) -> tuple[dict, Path]:
+        exe_input = self.exe_var.get().strip()
+        csv_input = self.csv_var.get().strip()
+        if not exe_input or not csv_input:
+            raise FileNotFoundError("C++ EXE 或 Input CSV 路径为空")
+
+        exe_path = self._resolve_user_path(exe_input)
+        csv_path = self._resolve_user_path(csv_input)
+        output_path = DEFAULT_PATH_COMPARE_JSON
+
+        if not exe_path.exists():
+            raise FileNotFoundError(f"可执行文件不存在: {exe_path}")
+        if not csv_path.exists():
+            raise FileNotFoundError(f"输入 CSV 不存在: {csv_path}")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path.exists():
+            output_path.unlink()
+
+        command = [
+            str(exe_path),
+            str(csv_path),
+            "--path-source",
+            src_ip,
+            "--path-destination",
+            dst_ip,
+            "--path-json-out",
+            str(output_path),
+        ]
+        completed = subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True, text=True)
+
+        self.append_log("[后端路径查询] " + " ".join(command))
+        if completed.stdout:
+            self.append_log(completed.stdout.strip())
+        if completed.stderr:
+            self.append_log(completed.stderr.strip())
+
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or f"后端返回错误码: {completed.returncode}")
+        if not output_path.exists():
+            raise RuntimeError(f"后端未生成路径结果文件: {output_path}")
+
+        payload, _ = self._read_json_with_fallback(output_path)
+        if not isinstance(payload, dict):
+            raise RuntimeError("后端路径结果格式无效")
+        return payload, output_path
+
+    def _update_path_result_panel_from_backend(
+        self,
+        var_map: dict[str, tk.StringVar],
+        text_widget: tk.Text,
+        payload: dict,
+    ) -> None:
+        found = bool(payload.get("found", False))
+        node_ips_raw = payload.get("node_ips", [])
+        node_ips = [str(item) for item in node_ips_raw] if isinstance(node_ips_raw, list) else []
+
+        if not found:
+            var_map["found"].set("False")
+            var_map["hops"].set("-")
+            var_map["congestion"].set("-")
+            var_map["duration"].set("-")
+            route_text = "未找到路径"
+        else:
+            hops_raw = payload.get("hops", len(node_ips) - 1)
+            congestion_raw = payload.get("congestion", 0.0)
+            duration_raw = payload.get("total_duration", 0.0)
+
+            try:
+                hops_text = str(int(hops_raw))
+            except (TypeError, ValueError):
+                hops_text = str(max(0, len(node_ips) - 1))
+
+            try:
+                congestion_text = f"{float(congestion_raw):.6f}"
+            except (TypeError, ValueError):
+                congestion_text = "-"
+
+            try:
+                duration_text = f"{float(duration_raw):.6f}"
+            except (TypeError, ValueError):
+                duration_text = "-"
+
+            var_map["found"].set("True")
+            var_map["hops"].set(hops_text)
+            var_map["congestion"].set(congestion_text)
+            var_map["duration"].set(duration_text)
+            route_text = " -> ".join(node_ips) if node_ips else "未返回路径节点"
+
+        text_widget.configure(state=tk.NORMAL)
+        text_widget.delete("1.0", tk.END)
+        text_widget.insert("1.0", route_text)
+        text_widget.configure(state=tk.DISABLED)
+
+    def _update_path_compare_summary_from_backend(
+        self,
+        src_ip: str,
+        dst_ip: str,
+        bfs_payload: dict,
+        dijkstra_payload: dict,
+    ) -> None:
+        bfs_found = bool(bfs_payload.get("found", False))
+        dijkstra_found = bool(dijkstra_payload.get("found", False))
+
+        if not bfs_found and not dijkstra_found:
+            self.path_compare_var.set(f"从 {src_ip} 到 {dst_ip} 未找到可达路径（后端）。")
             return
-        if dst_ip not in graph.nodes:
-            messagebox.showerror("查询失败", f"目的 IP 不在图中: {dst_ip}")
+
+        if bfs_found and not dijkstra_found:
+            self.path_compare_var.set("后端仅找到最小跳数路径，未找到最小拥塞路径。")
             return
 
-        hop_path: list[str] | None = None
-        congestion_path: list[str] | None = None
+        if dijkstra_found and not bfs_found:
+            self.path_compare_var.set("后端仅找到最小拥塞路径，未找到最小跳数路径。")
+            return
 
-        try:
-            hop_path = nx.shortest_path(graph, source=src_ip, target=dst_ip)
-        except Exception:
-            hop_path = None
+        bfs_nodes_raw = bfs_payload.get("node_ips", [])
+        dijkstra_nodes_raw = dijkstra_payload.get("node_ips", [])
+        bfs_nodes = [str(item) for item in bfs_nodes_raw] if isinstance(bfs_nodes_raw, list) else []
+        dijkstra_nodes = [str(item) for item in dijkstra_nodes_raw] if isinstance(dijkstra_nodes_raw, list) else []
 
-        try:
-            congestion_path = nx.dijkstra_path(
-                graph,
-                source=src_ip,
-                target=dst_ip,
-                weight=lambda _u, _v, data: float(data.get("weight", 0.0)) + 1e-9,
+        def _to_int(value: object, fallback: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return fallback
+
+        def _to_float(value: object, fallback: float) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return fallback
+
+        bfs_hops = _to_int(bfs_payload.get("hops"), max(0, len(bfs_nodes) - 1))
+        dij_hops = _to_int(dijkstra_payload.get("hops"), max(0, len(dijkstra_nodes) - 1))
+        bfs_congestion = _to_float(bfs_payload.get("congestion"), 0.0)
+        dij_congestion = _to_float(dijkstra_payload.get("congestion"), 0.0)
+        bfs_duration = _to_float(bfs_payload.get("total_duration"), 0.0)
+        dij_duration = _to_float(dijkstra_payload.get("total_duration"), 0.0)
+
+        if bfs_nodes and dijkstra_nodes and bfs_nodes == dijkstra_nodes:
+            self.path_compare_var.set(
+                f"后端两种算法路径一致：跳数={bfs_hops}，拥塞值={bfs_congestion:.6f}，总时延={bfs_duration:.6f}。"
             )
-        except Exception:
-            congestion_path = None
+            return
 
-        self._update_path_result_panel(self.path_hops_vars, self.path_hops_text, hop_path)
-        self._update_path_result_panel(self.path_congestion_vars, self.path_congestion_text, congestion_path)
-        self._update_path_compare_summary(src_ip, dst_ip, hop_path, congestion_path)
-
-        self.append_log(
-            f"[路径对比] src={src_ip}, dst={dst_ip}, hops_found={hop_path is not None}, congestion_found={congestion_path is not None}"
+        better_hops = "最小跳数路径" if bfs_hops <= dij_hops else "最小拥塞路径"
+        better_congestion = "最小拥塞路径" if dij_congestion <= bfs_congestion else "最小跳数路径"
+        self.path_compare_var.set(
+            f"后端路径不同：{better_hops}在跳数上更优（{bfs_hops} vs {dij_hops}），"
+            f"{better_congestion}在拥塞值上更优（{bfs_congestion:.6f} vs {dij_congestion:.6f}），"
+            f"对应总时延分别为 {bfs_duration:.6f} 和 {dij_duration:.6f}。"
         )
-        self.status_var.set("路径对比查询完成")
 
     def _update_path_result_panel(
         self,
@@ -1485,6 +1696,31 @@ class TrafficAnalyzerGUI(tk.Tk):
                 "",
                 tk.END,
                 values=(row.get("node", "-"),),
+            )
+
+    def _refresh_range(self, rows: list[dict]) -> None:
+        for item in self.range_tree.get_children():
+            self.range_tree.delete(item)
+
+        if not isinstance(rows, list):
+            return
+
+        for row in rows:
+            source_ip = str(row.get("source_ip", row.get("source", "-")))
+            destination_ip = str(row.get("destination_ip", row.get("destination", "-")))
+            protocol = row.get("protocol", "-")
+            data_size = row.get("data_size", 0)
+
+            duration_raw = row.get("duration", 0.0)
+            try:
+                duration_text = f"{float(duration_raw):.6f}"
+            except (TypeError, ValueError):
+                duration_text = "-"
+
+            self.range_tree.insert(
+                "",
+                tk.END,
+                values=(source_ip, destination_ip, protocol, data_size, duration_text),
             )
 
     def _on_star_select(self, _event: object) -> None:

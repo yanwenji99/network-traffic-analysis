@@ -20,7 +20,7 @@ std::vector<int> check_scan(const CSRGraph &graph)
             for (int j = offset[i]; j < offset[i + 1]; ++j)
             {
                 const Edge &edge = edges[j];
-                if (edge.flow.data_size > SCAN_DATA_SIZE_THRESHOLD)
+                if (edge.flow.data_size < SCAN_DATA_SIZE_THRESHOLD)
                 {
                     flag = false;
                     break;

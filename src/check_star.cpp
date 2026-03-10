@@ -68,7 +68,7 @@ std::vector<StarNode> check_star(const CSRGraph &graph)
 //     std::vector<StarNode> star_nodes;
 //     for (std::size_t i = 0; i < node_count; ++i)
 //     {
-//         if (undirected_neighbors[i].size() < STAR_DEGREE_THRESHOLD)
+//         if (undirected_neighbors[i].size() < STAR_OUT_DEGREE_THRESHOLD)
 //         {
 //             continue;
 //         }

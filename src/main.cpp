@@ -14,7 +14,14 @@ namespace
     {
         std::string input_file = "./data/network_data.csv";
         std::string json_output;
+        std::string path_source_ip;
+        std::string path_destination_ip;
+        std::string path_json_output;
+        std::string range_source_ip;
+        std::string range_start_ip;
+        std::string range_end_ip;
         bool batch_mode = false;
+        bool path_compare_mode = false;
     };
 
     struct BatchNodeStat
@@ -41,6 +48,61 @@ namespace
                 options.json_output = argv[++i];
                 options.batch_mode = true;
             }
+            else if (arg == "--path-source")
+            {
+                if (i + 1 >= argc)
+                {
+                    std::cerr << "Missing value for --path-source" << std::endl;
+                    return false;
+                }
+                options.path_source_ip = argv[++i];
+            }
+            else if (arg == "--path-destination")
+            {
+                if (i + 1 >= argc)
+                {
+                    std::cerr << "Missing value for --path-destination" << std::endl;
+                    return false;
+                }
+                options.path_destination_ip = argv[++i];
+            }
+            else if (arg == "--path-json-out")
+            {
+                if (i + 1 >= argc)
+                {
+                    std::cerr << "Missing value for --path-json-out" << std::endl;
+                    return false;
+                }
+                options.path_json_output = argv[++i];
+                options.path_compare_mode = true;
+            }
+            else if (arg == "--range-source")
+            {
+                if (i + 1 >= argc)
+                {
+                    std::cerr << "Missing value for --range-source" << std::endl;
+                    return false;
+                }
+                options.range_source_ip = argv[++i];
+            }
+            else if (arg == "--range-start")
+            {
+                if (i + 1 >= argc)
+                {
+                    std::cerr << "Missing value for --range-start" << std::endl;
+                    return false;
+                }
+                options.range_start_ip = argv[++i];
+            }
+            else if (arg == "--range-end")
+            {
+                if (i + 1 >= argc)
+                {
+                    std::cerr << "Missing value for --range-end" << std::endl;
+                    return false;
+                }
+                options.range_end_ip = argv[++i];
+            }
             else if (arg.rfind("--", 0) == 0)
             {
                 std::cerr << "Unknown option: " << arg << std::endl;
@@ -63,6 +125,40 @@ namespace
             std::cerr << "Batch mode requires --json-out <file>." << std::endl;
             return false;
         }
+
+        if (options.batch_mode && options.path_compare_mode)
+        {
+            std::cerr << "--json-out and --path-json-out cannot be used together." << std::endl;
+            return false;
+        }
+
+        if (options.path_compare_mode)
+        {
+            if (options.path_source_ip.empty() || options.path_destination_ip.empty() || options.path_json_output.empty())
+            {
+                std::cerr << "Path compare mode requires --path-source --path-destination --path-json-out." << std::endl;
+                return false;
+            }
+        }
+        else
+        {
+            if (!options.path_source_ip.empty() || !options.path_destination_ip.empty())
+            {
+                std::cerr << "--path-source and --path-destination must be used with --path-json-out." << std::endl;
+                return false;
+            }
+        }
+
+        const bool has_range_source = !options.range_source_ip.empty();
+        const bool has_range_start = !options.range_start_ip.empty();
+        const bool has_range_end = !options.range_end_ip.empty();
+        const int provided_range_args = static_cast<int>(has_range_source) + static_cast<int>(has_range_start) + static_cast<int>(has_range_end);
+        if (provided_range_args != 0 && provided_range_args != 3)
+        {
+            std::cerr << "Range check options must provide all of: --range-source --range-start --range-end" << std::endl;
+            return false;
+        }
+
         return true;
     }
 
@@ -177,7 +273,69 @@ namespace
                       return a.total_data_size > b.total_data_size; });
     }
 
-    bool write_batch_json(const CSRGraph &graph, const std::vector<Flow> &all_flows, const std::string &input_file, const std::string &json_path)
+    void write_path_result_json(std::ofstream &out, const std::string &field_name, const PathResult &result, bool trailing_comma)
+    {
+        out << "  \"" << field_name << "\": {\n";
+        out << "    \"found\": " << (result.found ? "true" : "false") << ",\n";
+
+        const int hops = result.found ? static_cast<int>(result.node_ids.size()) - 1 : -1;
+        out << "    \"hops\": " << hops << ",\n";
+        out << "    \"congestion\": " << std::fixed << std::setprecision(6) << result.jamb_score << ",\n";
+        out << "    \"total_data_size\": " << result.total_data_size << ",\n";
+        out << "    \"total_duration\": " << std::fixed << std::setprecision(6) << result.total_duration << ",\n";
+
+        out << "    \"node_ips\": [";
+        for (std::size_t i = 0; i < result.node_ips.size(); ++i)
+        {
+            out << "\"" << escape_json(result.node_ips[i]) << "\"";
+            if (i + 1 < result.node_ips.size())
+            {
+                out << ", ";
+            }
+        }
+        out << "]\n";
+        out << "  }";
+        if (trailing_comma)
+        {
+            out << ",";
+        }
+        out << "\n";
+    }
+
+    bool write_path_compare_json(
+        const CSRGraph &graph,
+        const std::string &input_file,
+        const std::string &src_ip,
+        const std::string &dst_ip,
+        const std::string &json_path)
+    {
+        std::ofstream out(json_path);
+        if (!out.is_open())
+        {
+            std::cerr << "Failed to open path json output file: " << json_path << std::endl;
+            return false;
+        }
+
+        PathResult bfs_result = BFS(graph, src_ip.c_str(), dst_ip.c_str());
+        PathResult dijkstra_result = Dejkstra(graph, src_ip.c_str(), dst_ip.c_str());
+
+        out << "{\n";
+        out << "  \"input_file\": \"" << escape_json(input_file) << "\",\n";
+        out << "  \"source_ip\": \"" << escape_json(src_ip) << "\",\n";
+        out << "  \"destination_ip\": \"" << escape_json(dst_ip) << "\",\n";
+        write_path_result_json(out, "bfs", bfs_result, true);
+        write_path_result_json(out, "dijkstra", dijkstra_result, false);
+        out << "}\n";
+
+        return true;
+    }
+
+    bool write_batch_json(
+        const CSRGraph &graph,
+        const std::vector<Flow> &all_flows,
+        const std::string &input_file,
+        const std::string &json_path,
+        const CliOptions &options)
     {
         std::ofstream out(json_path);
         if (!out.is_open())
@@ -220,6 +378,14 @@ namespace
 
         std::vector<StarNode> star_nodes = check_star(graph);
         std::vector<int> scan_nodes = check_scan(graph);
+        const std::string default_range_source_ip = "119.97.181.245";
+        const std::string default_range_start_ip = "115.156.141.129";
+        const std::string default_range_end_ip = "183.95.73.29";
+
+        const std::string range_source_ip = options.range_source_ip.empty() ? default_range_source_ip : options.range_source_ip;
+        const std::string range_start_ip = options.range_start_ip.empty() ? default_range_start_ip : options.range_start_ip;
+        const std::string range_end_ip = options.range_end_ip.empty() ? default_range_end_ip : options.range_end_ip;
+        std::vector<Flow> range_flows = check_illegal_flows(graph, range_source_ip.c_str(), range_start_ip.c_str(), range_end_ip.c_str());
 
         out << "{\n";
         out << "  \"input_file\": \"" << escape_json(input_file) << "\",\n";
@@ -339,6 +505,29 @@ namespace
         }
         out << "  ],\n";
 
+        out << "  \"range_check_config\": {\"source_ip\": \"" << escape_json(range_source_ip)
+            << "\", \"start_ip\": \"" << escape_json(range_start_ip)
+            << "\", \"end_ip\": \"" << escape_json(range_end_ip) << "\"},\n";
+
+        out << "  \"range_flows\": [\n";
+        for (std::size_t i = 0; i < range_flows.size(); ++i)
+        {
+            const auto &flow = range_flows[i];
+            out << "    {\"source_ip\": \"" << escape_json(std::string(flow.source_ip))
+                << "\", \"destination_ip\": \"" << escape_json(std::string(flow.destination_ip))
+                << "\", \"protocol\": " << static_cast<unsigned int>(flow.protocol)
+                << ", \"src_port\": " << flow.src_port
+                << ", \"dst_port\": " << flow.dst_port
+                << ", \"data_size\": " << flow.data_size
+                << ", \"duration\": " << std::fixed << std::setprecision(6) << flow.duration << "}";
+            if (i + 1 < range_flows.size())
+            {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+
         out << "  \"scan_nodes\": [\n";
         for (std::size_t i = 0; i < scan_nodes.size(); ++i)
         {
@@ -363,9 +552,9 @@ namespace
 #define ALL_SORT 0
 #define BFS_PATH 1
 #define DEJKSTRA_PATH 0
-#define CHECK_STAR 1
+#define CHECK_STAR 0
 #define CHECK_SCAN 0
-#define CHECK_RANGE 0
+#define CHECK_RANGE 1
 
 int main(int argc, char *argv[])
 {
@@ -392,11 +581,26 @@ int main(int argc, char *argv[])
 
     if (options.batch_mode)
     {
-        if (!write_batch_json(graph, flows, options.input_file, options.json_output))
+        if (!write_batch_json(graph, flows, options.input_file, options.json_output, options))
         {
             return 1;
         }
         std::cout << "Batch analysis exported to: " << options.json_output << std::endl;
+        return 0;
+    }
+
+    if (options.path_compare_mode)
+    {
+        if (!write_path_compare_json(
+                graph,
+                options.input_file,
+                options.path_source_ip,
+                options.path_destination_ip,
+                options.path_json_output))
+        {
+            return 1;
+        }
+        std::cout << "Path comparison exported to: " << options.path_json_output << std::endl;
         return 0;
     }
 
@@ -481,7 +685,16 @@ int main(int argc, char *argv[])
             std::vector<int> scan_nodes = check_scan(graph);
             printf_scan_result(graph, scan_nodes);
 #else
-            std::vector<Flow> illegal_flows = check_illegal_flows(graph, "192.168.1.1", "192.168.1.2", "192.168.1.5");
+            std::cout << "Please input source IP for range check: ";
+            std::string src_ip;
+            std::cin >> src_ip;
+            std::cout << "Please input start IP for range check: ";
+            std::string start_ip;
+            std::cin >> start_ip;
+            std::cout << "Please input end IP for range check: ";
+            std::string end_ip;
+            std::cin >> end_ip;
+            std::vector<Flow> illegal_flows = check_illegal_flows(graph, src_ip.c_str(), start_ip.c_str(), end_ip.c_str());
             print_illegal_flows(illegal_flows);
 #endif
         }
