@@ -21,8 +21,11 @@ DEFAULT_EXE = REPO_ROOT / "build" / "bin" / "main.exe"
 DEFAULT_INPUT_CSV = REPO_ROOT / "data" / "network_data.csv"
 DEFAULT_OUTPUT_JSON = REPO_ROOT / "data" / "output" / "results.json"
 DEFAULT_PATH_COMPARE_JSON = REPO_ROOT / "data" / "output" / "path_compare.json"
+DEFAULT_SUBGRAPH_JSON = REPO_ROOT / "data" / "output" / "subgraph.json"
 DEFAULT_INPUT_PCAP = REPO_ROOT / "data" / "catch_data.pcap"
 DEFAULT_PCAP_SCRIPT = REPO_ROOT / "scripts" / "pcap_to_csv.py"
+SUBGRAPH_EDGE_TABLE_DISPLAY_LIMIT = 2000
+SUBGRAPH_HTML_EDGE_LABEL_LIMIT = 160
 
 PROTOCOL_NAMES = {
     1: "ICMP",
@@ -381,7 +384,7 @@ class TrafficAnalyzerGUI(tk.Tk):
             warn.grid(row=1, column=0, columnspan=5, sticky=tk.W, pady=(8, 0))
             self.btn_export_subgraph.configure(state=tk.DISABLED)
 
-        info_box = ttk.LabelFrame(self.page_subgraph, text="后端子图信息（有向）", padding=10)
+        info_box = ttk.LabelFrame(self.page_subgraph, text="后端子图信息（连通）", padding=10)
         info_box.pack(fill=tk.X, pady=(10, 0))
 
         ttk.Label(info_box, text="子图范围:", width=16).grid(row=0, column=0, sticky=tk.W)
@@ -766,7 +769,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         self._update_path_compare_summary_from_backend(src_ip, dst_ip, bfs_payload, dijkstra_payload)
 
         self.append_log(f"[路径对比-后端] src={src_ip}, dst={dst_ip}, output={output_path}")
-        self.status_var.set("路径对比查询完成（后端）")
+        self.status_var.set("路径对比查询完成")
 
     def _query_path_via_backend(self, src_ip: str, dst_ip: str) -> tuple[dict, Path]:
         exe_input = self.exe_var.get().strip()
@@ -1006,7 +1009,7 @@ class TrafficAnalyzerGUI(tk.Tk):
 
         exe_path = self._resolve_user_path(exe_input)
         csv_path = self._resolve_user_path(csv_input)
-        output_path = REPO_ROOT / "data" / "output" / "subgraph.json"
+        output_path = DEFAULT_SUBGRAPH_JSON
 
         if not exe_path.exists():
             raise FileNotFoundError(f"可执行文件不存在: {exe_path}")
@@ -1091,7 +1094,7 @@ class TrafficAnalyzerGUI(tk.Tk):
             entry["duration_sum"] += float(row.get("duration", 0.0) or 0.0)
 
         sorted_edges = sorted(aggregate_edges.items(), key=lambda item: item[1]["weight"], reverse=True)
-        for (src, dst), data in sorted_edges[:500]:
+        for (src, dst), data in sorted_edges[:SUBGRAPH_EDGE_TABLE_DISPLAY_LIMIT]:
             self.subgraph_edge_tree.insert(
                 "",
                 tk.END,
@@ -1102,6 +1105,7 @@ class TrafficAnalyzerGUI(tk.Tk):
         edge_count = int(payload.get("edge_count", len(edges_raw)) or len(edges_raw))
         out_reach = int(payload.get("outgoing_reachable_count", 0) or 0)
         in_reach = int(payload.get("incoming_reachable_count", 0) or 0)
+        mode = str(payload.get("mode", "") or "")
 
         self.current_subgraph_nodes = sorted(set(node_ips))
         if nx is not None:
@@ -1114,7 +1118,10 @@ class TrafficAnalyzerGUI(tk.Tk):
         else:
             self.current_subgraph_graph = None
 
-        self.subgraph_info_vars["component_root"].set(f"target={target_ip}, out={out_reach}, in={in_reach}")
+        if mode == "undirected_connected_component":
+            self.subgraph_info_vars["component_root"].set(f"target={target_ip}, connected={out_reach}")
+        else:
+            self.subgraph_info_vars["component_root"].set(f"target={target_ip}, out={out_reach}, in={in_reach}")
         self.subgraph_info_vars["node_count"].set(str(node_count))
         self.subgraph_info_vars["edge_count"].set(str(edge_count))
 
@@ -1319,6 +1326,42 @@ class TrafficAnalyzerGUI(tk.Tk):
 
         return resolved
 
+    def _is_missing_module_error(self, exc: BaseException, module_name: str) -> bool:
+        module = module_name.lower().strip()
+        if not module:
+            return False
+
+        missing_name = str(getattr(exc, "name", "") or "").lower()
+        message = str(exc).lower()
+        return (
+            missing_name == module
+            or f"no module named '{module}'" in message
+            or f'no module named "{module}"' in message
+            or module in missing_name
+        )
+
+    def _build_manual_circular_layout(self, subgraph, target_ip: str) -> dict[str, tuple[float, float]]:
+        nodes = [str(node) for node in subgraph.nodes()]
+        if not nodes:
+            return {}
+        if len(nodes) == 1:
+            return {nodes[0]: (0.0, 0.0)}
+
+        positions: dict[str, tuple[float, float]] = {}
+        sorted_nodes = sorted(nodes)
+        if target_ip in sorted_nodes:
+            positions[target_ip] = (0.0, 0.0)
+            sorted_nodes.remove(target_ip)
+
+        total = max(1, len(sorted_nodes))
+        for index, node in enumerate(sorted_nodes):
+            angle = 2.0 * math.pi * (index / total)
+            ring = index // 28
+            radius = 1.0 + ring * 0.28
+            positions[node] = (radius * math.cos(angle), radius * math.sin(angle))
+
+        return positions
+
     def _build_subgraph_html(self, subgraph, target_ip: str, enforce_min_distance: bool = False) -> str:
         node_count = subgraph.number_of_nodes()
         edge_count = subgraph.number_of_edges()
@@ -1326,6 +1369,11 @@ class TrafficAnalyzerGUI(tk.Tk):
             raise ValueError("子图为空，无法导出")
 
         undirected = subgraph.to_undirected()
+
+        def _spring_layout_positions() -> dict[str, tuple[float, float]]:
+            k_value = max(0.18, min(0.9, 2.6 / (node_count ** 0.5)))
+            return nx.spring_layout(undirected, seed=42, k=k_value, iterations=300)
+
         try:
             if node_count == 1:
                 only_node = next(iter(subgraph.nodes()))
@@ -1333,21 +1381,30 @@ class TrafficAnalyzerGUI(tk.Tk):
             elif node_count <= 80:
                 positions = nx.kamada_kawai_layout(undirected)
             else:
-                k_value = max(0.18, min(0.9, 2.6 / (node_count ** 0.5)))
-                positions = nx.spring_layout(undirected, seed=42, k=k_value, iterations=300)
-        except ModuleNotFoundError as exc:
-            missing_name = str(getattr(exc, "name", "") or "")
-            msg = str(exc).lower()
-            if missing_name == "scipy" or "scipy" in msg:
-                # Fallback when scipy is unavailable in some environments.
-                k_value = max(0.18, min(0.9, 2.6 / (node_count ** 0.5)))
-                positions = nx.spring_layout(undirected, seed=42, k=k_value, iterations=300)
-            elif missing_name == "numpy" or "numpy" in msg:
+                positions = _spring_layout_positions()
+        except (ModuleNotFoundError, ImportError) as exc:
+            if self._is_missing_module_error(exc, "numpy"):
                 raise RuntimeError(
                     "导出子图失败：当前 Python 环境缺少 numpy。"
                     "请先执行：python -m pip install -r requirements.txt，"
                     "并确认 UI 使用的是同一个解释器。"
                 ) from exc
+            if self._is_missing_module_error(exc, "scipy"):
+                try:
+                    positions = _spring_layout_positions()
+                except (ModuleNotFoundError, ImportError) as fallback_exc:
+                    if self._is_missing_module_error(fallback_exc, "numpy"):
+                        raise RuntimeError(
+                            "导出子图失败：当前 Python 环境缺少 numpy。"
+                            "请先执行：python -m pip install -r requirements.txt，"
+                            "并确认 UI 使用的是同一个解释器。"
+                        ) from fallback_exc
+                    if self._is_missing_module_error(fallback_exc, "scipy"):
+                        # Final fallback that avoids scipy-dependent layouts.
+                        positions = self._build_manual_circular_layout(subgraph, target_ip)
+                        self.append_log("[子图导出] scipy 缺失，已降级为内置圆环布局")
+                    else:
+                        raise
             else:
                 raise
 
@@ -1418,7 +1475,7 @@ class TrafficAnalyzerGUI(tk.Tk):
 
         edge_parts: list[str] = []
         edge_label_parts: list[str] = []
-        label_edge_limit = 40
+        label_edge_limit = SUBGRAPH_HTML_EDGE_LABEL_LIMIT
         for index, (src, dst, data) in enumerate(edges_sorted):
             x1, y1 = canvas_positions[str(src)]
             x2, y2 = canvas_positions[str(dst)]
@@ -1751,4 +1808,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

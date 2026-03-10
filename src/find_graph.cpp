@@ -2,8 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
-#include <queue>
-#include <unordered_set>
+#include <numeric>
 
 namespace
 {
@@ -38,34 +37,53 @@ namespace
         return escaped;
     }
 
-    std::vector<int> bfs_collect(const std::vector<std::vector<int>> &adj, int start)
+    class DisjointSet
     {
-        const std::size_t n = adj.size(); // 节点总数
-        std::vector<bool> visited(n, 0);  // 访问标记数组
-        std::queue<int> q;                // BFS队列
-        visited[static_cast<std::size_t>(start)] = 1;
-        q.push(start);
-
-        std::vector<int> collected;
-        while (!q.empty())
+    public:
+        explicit DisjointSet(std::size_t n)
+            : parent(n), rank(n, 0)
         {
-            int current = q.front(); // 取出队首节点
-            q.pop();
-            collected.push_back(current);
+            std::iota(parent.begin(), parent.end(), 0);
+        }
 
-            // 遍历当前节点的所有邻接节点
-            for (int next : adj[static_cast<std::size_t>(current)])
+        int find(int x)
+        {
+            const int px = parent[static_cast<std::size_t>(x)];
+            if (px == x)
             {
-                if (next >= 0 && static_cast<std::size_t>(next) < n && !visited[static_cast<std::size_t>(next)])
-                {
-                    visited[static_cast<std::size_t>(next)] = 1;
-                    q.push(next);
-                }
+                return x;
+            }
+            parent[static_cast<std::size_t>(x)] = find(px);
+            return parent[static_cast<std::size_t>(x)];
+        }
+
+        void unite(int a, int b)
+        {
+            int root_a = find(a);
+            int root_b = find(b);
+            if (root_a == root_b)
+            {
+                return;
+            }
+
+            const int rank_a = rank[static_cast<std::size_t>(root_a)];
+            const int rank_b = rank[static_cast<std::size_t>(root_b)];
+            if (rank_a < rank_b)
+            {
+                std::swap(root_a, root_b);
+            }
+
+            parent[static_cast<std::size_t>(root_b)] = root_a;
+            if (rank_a == rank_b)
+            {
+                ++rank[static_cast<std::size_t>(root_a)];
             }
         }
 
-        return collected; // 可达节点列表（包含起始节点）
-    }
+    private:
+        std::vector<int> parent;
+        std::vector<int> rank;
+    };
 } // namespace
 
 SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
@@ -88,9 +106,8 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
     const std::vector<int> &offset = graph.getOffset();
     const std::vector<Edge> &edges = graph.getEdges();
 
-    // 构建正向和反向邻接表，用于BFS遍历
-    std::vector<std::vector<int>> forward_adj(node_count);
-    std::vector<std::vector<int>> reverse_adj(node_count);
+    // 用并查集把所有有连接的节点合并到同一连通分量（忽略边方向）
+    DisjointSet dsu(node_count);
     for (std::size_t from = 0; from < node_count; ++from)
     {
         for (int i = offset[from]; i < offset[from + 1]; ++i)
@@ -98,38 +115,27 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
             const int to = edges[i].to;
             if (to >= 0 && static_cast<std::size_t>(to) < node_count)
             {
-                forward_adj[from].push_back(to); // 添加到正向邻接表
-                reverse_adj[static_cast<std::size_t>(to)].push_back(static_cast<int>(from)); // 添加到反向邻接表
+                dsu.unite(static_cast<int>(from), to);
             }
         }
     }
 
-    // 分别收集从目标节点出发可到达的节点（正向）和可以到达目标节点的节点（反向）
-    const std::vector<int> outgoing_nodes = bfs_collect(forward_adj, target_id);
-    const std::vector<int> incoming_nodes = bfs_collect(reverse_adj, target_id);
+    const int target_root = dsu.find(target_id);
 
-    // 标记哪些节点属于子图
+    // 标记与目标节点处于同一连通分量的所有节点
     std::vector<bool> in_subgraph(node_count, 0);
-    for (int node_id : outgoing_nodes)
-    {
-        in_subgraph[static_cast<std::size_t>(node_id)] = 1;
-    }
-    for (int node_id : incoming_nodes)
-    {
-        in_subgraph[static_cast<std::size_t>(node_id)] = 1;
-    }
-
-    result.outgoing_reachable_count = outgoing_nodes.empty() ? 0 : outgoing_nodes.size() - 1;
-    result.incoming_reachable_count = incoming_nodes.empty() ? 0 : incoming_nodes.size() - 1;
-
-    // 收集所有子图节点的ID
     for (std::size_t node_id = 0; node_id < node_count; ++node_id)
     {
-        if (in_subgraph[node_id])
+        if (dsu.find(static_cast<int>(node_id)) == target_root)
         {
+            in_subgraph[node_id] = 1;
             result.node_ids.push_back(static_cast<int>(node_id));
         }
     }
+
+    const std::size_t reachable_count = result.node_ids.empty() ? 0 : result.node_ids.size() - 1;
+    result.outgoing_reachable_count = reachable_count;
+    result.incoming_reachable_count = reachable_count;
 
     // 获取每个节点对应的IP地址
     std::sort(result.node_ids.begin(), result.node_ids.end());
@@ -165,10 +171,9 @@ void printf_subgraph_result(const CSRGraph &graph, const SubgraphResult &result,
         return;
     }
 
-    std::cout << "Directed subgraph for target IP " << result.target_ip
+    std::cout << "Connected subgraph for target IP " << result.target_ip
               << " (node_id=" << result.target_node_id << ")" << std::endl;
-    std::cout << "Outgoing reachable: " << result.outgoing_reachable_count
-              << ", Incoming reachable: " << result.incoming_reachable_count << std::endl;
+    std::cout << "Reachable in same connected component: " << result.outgoing_reachable_count << std::endl;
     std::cout << "Nodes: " << result.node_ids.size()
               << ", Edges: " << result.edges.size() << std::endl;
 
@@ -248,7 +253,7 @@ bool export_subgraph_json(const CSRGraph &graph, const SubgraphResult &result, c
     out << "{\n";
     out << "  \"target_ip\": \"" << escape_json(result.target_ip) << "\",\n";
     out << "  \"target_node_id\": " << result.target_node_id << ",\n";
-    out << "  \"mode\": \"directed_reachable_union\",\n";
+    out << "  \"mode\": \"undirected_connected_component\",\n";
     out << "  \"outgoing_reachable_count\": " << result.outgoing_reachable_count << ",\n";
     out << "  \"incoming_reachable_count\": " << result.incoming_reachable_count << ",\n";
     out << "  \"node_count\": " << result.node_ids.size() << ",\n";

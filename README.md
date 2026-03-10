@@ -173,6 +173,7 @@ Source,Destination,Protocol,SrcPort,DstPort,DataSize,Duration
 - `sort`：排序分析
 - `path`：路径查询
 - `subgraph`：按目标 IP 查询其弱连通子图（忽略边方向）
+- `subgraph_json`：查询并导出子图 JSON（默认 `./data/output/subgraph.json`）
 - `read`：查看前 N 条流
 - `check`：异常检测（星型 + 扫描，受宏开关控制）
 - `exit`：退出
