@@ -55,3 +55,5 @@ build/obj/
 
 # Generated output data
 data/output/
+data/subgraph_*.html
+subgraph.json
