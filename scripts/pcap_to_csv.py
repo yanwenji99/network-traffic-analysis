@@ -90,6 +90,15 @@ def aggregate_flows(pcap_path: Path) -> Dict[FlowKey, FlowAgg]:
     return flow_map
 
 
+"""
+    将聚合的流量会话写入 CSV 文件
+    功能：按时间戳排序会话，计算持续时间，写入 CSV 文件
+    入口参数：
+        flow_map - 聚合的流量会话字典
+        output_path - 输出 CSV 文件路径
+    出口参数：
+        无返回值
+    """
 def write_csv(flow_map: Dict[FlowKey, FlowAgg], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sorted_rows = sorted(

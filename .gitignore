@@ -57,3 +57,7 @@ build/obj/
 data/output/
 data/subgraph_*.html
 subgraph.json
+
+# Data files
+data/*.csv
+data/*.pcap
