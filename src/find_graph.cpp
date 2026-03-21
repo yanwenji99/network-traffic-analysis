@@ -37,37 +37,68 @@ namespace
         return escaped;
     }
 
+    /**
+     * 并查集（Disjoint Set Union）类
+     * 功能：用于高效地管理元素的合并与查询操作，支持路径压缩和按秩合并优化
+     * 核心思想：将相互连通的节点合并到同一集合，通过根节点判断是否连通
+     */
     class DisjointSet
     {
     public:
+        /**
+         * 构造函数
+         * 功能：初始化并查集，每个节点的父节点初始化为自身
+         * 入口参数：
+         *     n - 节点数量
+         */
         explicit DisjointSet(std::size_t n)
             : parent(n), rank(n, 0)
         {
-            std::iota(parent.begin(), parent.end(), 0);
+            std::iota(parent.begin(), parent.end(), 0); // 初始时每个节点的父节点是自身
         }
 
+        /**
+         * 查找操作（带路径压缩）
+         * 功能：查找节点x的根节点，同时将x直接连接到根节点（路径压缩）
+         * 核心思想：递归查找根节点，回溯时更新父节点，实现O(α(n))近似O(1)的查询
+         * 入口参数：
+         *     x - 要查找的节点
+         * 出口参数：
+         *     返回节点x的根节点
+         */
         int find(int x)
         {
             const int px = parent[static_cast<std::size_t>(x)];
             if (px == x)
             {
-                return x;
+                return x; // 找到根节点
             }
+            // 核心思想：路径压缩，将当前节点直接连接到根节点
             parent[static_cast<std::size_t>(x)] = find(px);
             return parent[static_cast<std::size_t>(x)];
         }
 
+        /**
+         * 合并操作（带按秩合并）
+         * 功能：将节点a和b所在的集合合并
+         * 核心思想：将秩小的树的根连接到秩大的树的根，保持树的平衡
+         * 入口参数：
+         *     a - 第一个节点
+         *     b - 第二个节点
+         */
         void unite(int a, int b)
         {
             int root_a = find(a);
             int root_b = find(b);
             if (root_a == root_b)
             {
-                return;
+                return; // 已在同一集合，无需合并
             }
 
             const int rank_a = rank[static_cast<std::size_t>(root_a)];
             const int rank_b = rank[static_cast<std::size_t>(root_b)];
+
+            // 核心思想：按秩合并，将秩小的树合并到秩大的树下
             if (rank_a < rank_b)
             {
                 std::swap(root_a, root_b);
@@ -76,16 +107,26 @@ namespace
             parent[static_cast<std::size_t>(root_b)] = root_a;
             if (rank_a == rank_b)
             {
-                ++rank[static_cast<std::size_t>(root_a)];
+                ++rank[static_cast<std::size_t>(root_a)]; // 秩相同时，合并后秩加1
             }
         }
 
     private:
-        std::vector<int> parent;
-        std::vector<int> rank;
+        std::vector<int> parent; // 父节点数组
+        std::vector<int> rank;   // 秩数组，用于按秩合并
     };
 } // namespace
 
+/**
+ * 根据IP地址查找连通子图
+ * 功能：查找包含目标IP的连通分量，返回该连通分量中的所有节点和边
+ * 核心思想：使用并查集算法识别连通分量，收集与目标节点在同一连通分量的所有节点和边
+ * 入口参数：
+ *     graph - CSR图结构对象
+ *     target_ip - 目标IP地址
+ * 出口参数：
+ *     返回子图结果对象，包含节点列表、边列表等信息
+ */
 SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
 {
     SubgraphResult result;
@@ -163,6 +204,16 @@ SubgraphResult find_subgraph_by_ip(const CSRGraph &graph, const char *target_ip)
     return result;
 }
 
+/**
+ * 打印子图查询结果
+ * 功能：格式化输出子图查询的结果，包括节点列表、边列表等
+ * 核心思想：遍历子图的节点和边，格式化输出详细信息
+ * 入口参数：
+ *     graph - CSR图结构对象
+ *     result - 子图结果对象
+ *     max_edges_to_print - 最多显示的边数量
+ * 出口参数：无返回值，直接输出到控制台
+ */
 void printf_subgraph_result(const CSRGraph &graph, const SubgraphResult &result, std::size_t max_edges_to_print)
 {
     if (!result.found)
@@ -206,6 +257,17 @@ void printf_subgraph_result(const CSRGraph &graph, const SubgraphResult &result,
     }
 }
 
+/**
+ * 导出子图到JSON文件
+ * 功能：将子图结果导出为JSON格式，供前端可视化使用
+ * 核心思想：遍历子图的节点和边，计算入度和出度，格式化输出为JSON
+ * 入口参数：
+ *     graph - CSR图结构对象
+ *     result - 子图结果对象
+ *     json_path - JSON文件输出路径
+ * 出口参数：
+ *     返回true表示导出成功，false表示导出失败
+ */
 bool export_subgraph_json(const CSRGraph &graph, const SubgraphResult &result, const std::string &json_path)
 {
     if (!result.found)

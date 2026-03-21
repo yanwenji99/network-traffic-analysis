@@ -5,6 +5,17 @@
 
 const double INF = std::numeric_limits<double>::max();
 
+/**
+ * BFS最短路径查找
+ * 功能：使用广度优先搜索算法查找从源IP到目标IP的最短路径（跳数最少）
+ * 核心思想：BFS保证找到的第一条路径是最短路径，使用队列实现层次遍历
+ * 入口参数：
+ *     graph - CSR图结构对象
+ *     src_ip - 源IP地址
+ *     dst_ip - 目标IP地址
+ * 出口参数：
+ *     返回路径结果对象，包含路径节点、总持续时间、总数据量等信息
+ */
 PathResult BFS(const CSRGraph &graph, const char *src_ip, const char *dst_ip)
 {
     PathResult result;
@@ -124,6 +135,17 @@ PathResult BFS(const CSRGraph &graph, const char *src_ip, const char *dst_ip)
     return result;
 }
 
+/**
+ * Dijkstra最短路径查找
+ * 功能：使用Dijkstra算法查找从源IP到目标IP的最小拥塞路径
+ * 核心思想：使用优先队列实现Dijkstra算法，以数据量/持续时间为权重寻找最优路径
+ * 入口参数：
+ *     graph - CSR图结构对象
+ *     src_ip - 源IP地址
+ *     dst_ip - 目标IP地址
+ * 出口参数：
+ *     返回路径结果对象，包含路径节点、拥塞评分等信息
+ */
 PathResult Dejkstra(const CSRGraph &graph, const char *src_ip, const char *dst_ip)
 {
     PathResult result;
@@ -247,6 +269,14 @@ PathResult Dejkstra(const CSRGraph &graph, const char *src_ip, const char *dst_i
     return result;
 }
 
+/**
+ * 打印路径查找结果
+ * 功能：格式化输出路径查找的结果，包括路径长度、节点详情等
+ * 核心思想：遍历路径节点，格式化输出每个节点的信息
+ * 入口参数：
+ *     result - 路径结果对象
+ * 出口参数：无返回值，直接输出到控制台
+ */
 void printf_path(const PathResult result)
 {
     if (!result.found)

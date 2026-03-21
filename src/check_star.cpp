@@ -2,29 +2,52 @@
 
 #include <algorithm>
 
+// 星型结构检测阈值：节点出度超过此值才进入详细检查
 #define STAR_OUT_DEGREE_THRESHOLD 20
 
+/**
+ * 检测星型结构节点
+ * 功能：查找连接大量叶子节点的中心节点，这类结构常见于C&C通信或DDoS攻击
+ * 核心思想：遍历所有节点，检查出度是否超过阈值，且连接的邻居是否都是叶子节点（出度为0）
+ * 入口参数：
+ *     graph - CSR图结构对象
+ * 出口参数：
+ *     返回检测到的星型节点向量
+ */
 std::vector<StarNode> check_star(const CSRGraph &graph)
 {
+    // 获取图的基本信息
     const std::size_t node_count = graph.getNodeCount();
     const std::vector<int> &offset = graph.getOffset();
     const std::vector<Edge> &edges = graph.getEdges();
 
     std::vector<StarNode> star_nodes;
+    
+    // 遍历所有节点，检查是否为星型结构
     for (std::size_t i = 0; i < node_count; ++i)
     {
         StarNode node;
         node.node_id = static_cast<int>(i);
 
+        // 计算当前节点的出度（通过CSR的offset数组差值）
+        // offset[i+1] - offset[i] 表示节点i的出边数量
         const int out_degree = offset[i + 1] - offset[i];
+        
+        // 仅当出度超过阈值时才进行详细检查
         if (out_degree > STAR_OUT_DEGREE_THRESHOLD)
         {
+            // 使用集合去重，避免重复记录同一叶子节点
             std::unordered_set<int> seen_leaf_ids;
+            
+            // 遍历当前节点的所有出边
             for (int j = offset[i]; j < offset[i + 1]; ++j)
             {
                 int dst_id = edges[j].to;
+                
+                // 判断目标节点是否为叶子节点：出度为0（offset差值为0）
                 if (offset[dst_id + 1] == offset[dst_id])
                 {
+                    // insert返回pair<iterator, bool>，second为true表示插入成功（首次出现）
                     if (seen_leaf_ids.insert(dst_id).second)
                     {
                         node.connected_nodes.push_back(dst_id);
@@ -33,6 +56,7 @@ std::vector<StarNode> check_star(const CSRGraph &graph)
             }
         }
 
+        // 如果连接的叶子节点数量也超过阈值，判定为星型结构
         if (node.connected_nodes.size() >= STAR_OUT_DEGREE_THRESHOLD)
         {
             star_nodes.push_back(node);
@@ -99,6 +123,16 @@ std::vector<StarNode> check_star(const CSRGraph &graph)
 //     return star_nodes;
 // }
 
+/**
+ * 打印星型结构检测结果
+ * 功能：格式化输出星型结构检测结果，显示中心节点及其连接的叶子节点
+ * 核心思想：遍历星型节点向量，输出中心节点IP和所有连接节点的IP
+ * 入口参数：
+ *     graph - CSR图结构对象
+ *     star_nodes - 星型节点向量
+ * 出口参数：
+ *     无返回值，直接输出到控制台
+ */
 void printf_star_result(const CSRGraph &graph, const std::vector<StarNode> &star_nodes)
 {
     if (star_nodes.empty())

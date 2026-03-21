@@ -1,6 +1,16 @@
 #include "read_to_flow.h"
 #include "graph.h"
 
+/**
+ * 从CSV文件读取网络流量数据
+ * 功能：解析CSV格式的网络流量数据文件，将其转换为Flow结构体向量
+ * 核心思想：逐行读取CSV文件，按逗号分隔字段，解析并填充Flow结构体
+ * 入口参数：
+ *     filename - CSV文件路径
+ *     flows - 用于存储解析结果的Flow向量（引用传递）
+ * 出口参数：
+ *     无返回值，结果通过flows参数返回
+ */
 void readfile(const std::string &filename, std::vector<Flow> &flows)
 {
     std::ifstream infile(filename);
@@ -68,6 +78,17 @@ void readfile(const std::string &filename, std::vector<Flow> &flows)
     }
     infile.close();
 }
+
+/**
+ * 打印流量数据
+ * 功能：格式化输出指定数量的流量记录，用于调试和验证
+ * 核心思想：遍历flows向量，输出前num条记录的详细信息
+ * 入口参数：
+ *     flows - 要打印的Flow向量
+ *     num - 要打印的记录数量
+ * 出口参数：
+ *     无返回值，直接输出到控制台
+ */
 void print_flows(const std::vector<Flow> &flows, int num)
 {
     if (num <= 0)

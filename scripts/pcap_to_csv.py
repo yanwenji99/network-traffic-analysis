@@ -42,6 +42,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+"""
+    从 PCAP 文件中提取并聚合流量会话
+    功能：遍历 PCAP 文件中的所有数据包，提取五元组信息，将相同五元组的数据包聚合成会话
+    入口参数：
+        pcap_path - PCAP 文件路径
+    出口参数：
+        返回以五元组为键，FlowAgg 为值的字典
+"""
 def aggregate_flows(pcap_path: Path) -> Dict[FlowKey, FlowAgg]:
     packets = rdpcap(str(pcap_path))
     flow_map: Dict[FlowKey, FlowAgg] = {}
