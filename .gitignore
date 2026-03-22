@@ -48,13 +48,22 @@ Thumbs.db
 *.so
 *.a
 *.lib
+
+# Data files - keep directory structure, ignore data content
+data/*
+!data/.gitkeep
+!data/output/
+data/output/*
+!data/output/.gitkeep
+*.csv
+*.pcap
+*.pcapng
+*.json
+!*.schema.json
 *.pdb
 *.ilk
 build/bin/
 build/obj/
-
-# Generated output data
-data/output/
 data/subgraph_*.html
 subgraph.json
 
