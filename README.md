@@ -48,7 +48,10 @@
 ├─ python/
 │  └─ ui_gui.py
 ├─ scripts/
-│  └─ pcap_to_csv.py
+│  ├─ pcap_to_csv.py
+│  ├─ generate_test_data.py
+│  ├─ performance_test.py
+│  └─ build_ui.py
 ├─ data/
 │  ├─ network_data.csv
 │  └─ output/
@@ -332,3 +335,42 @@ Source,Destination,Protocol,SrcPort,DstPort,DataSize,Duration
   - 如果源/目的节点之间存在直连边，或最少跳数路径同时也是最小拥塞路径，两者结果本身就可能一致。
 - 终端中文乱码
   - 通常是终端编码问题，不影响分析逻辑。
+
+## 12. 生成可执行文件
+
+### 12.1 生成独立可执行文件
+
+使用 `pyinstaller` 可以将 Python UI 打包成独立的可执行文件，无需安装 Python 环境即可运行。
+
+**步骤**：
+
+1. **安装打包工具**
+
+   ```powershell
+   python -m pip install pyinstaller
+   ```
+
+2. **执行打包脚本**
+
+   ```powershell
+   python .\scripts\build_ui.py
+   ```
+
+3. **生成的文件**
+   - `dist/NetworkAnalyzer.exe` - 独立可执行文件
+
+### 12.2 可执行文件使用方法
+
+- **直接运行**：双击 `NetworkAnalyzer.exe` 即可启动系统
+- **功能**：与运行 `python .\python\ui_gui.py` 效果完全相同
+- **环境要求**：仅需 Windows 系统，无需安装 Python 或依赖
+- **文件结构**：运行时会自动处理内部资源，无需额外配置
+
+### 12.3 脚本说明
+
+| 脚本文件                | 功能                          |
+| ----------------------- | ----------------------------- |
+| `pcap_to_csv.py`        | 从 PCAP 文件提取 CSV 流量数据 |
+| `generate_test_data.py` | 生成测试网络流量数据          |
+| `performance_test.py`   | 测试系统性能指标              |
+| `build_ui.py`           | 打包生成独立可执行文件        |

@@ -70,3 +70,6 @@ subgraph.json
 # Data files
 data/*.csv
 data/*.pcap
+
+# PyInstaller spec files
+*.spec
