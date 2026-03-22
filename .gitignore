@@ -66,3 +66,7 @@ build/bin/
 build/obj/
 data/subgraph_*.html
 subgraph.json
+
+# Data files
+data/*.csv
+data/*.pcap
